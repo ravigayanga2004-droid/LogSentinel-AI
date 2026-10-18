@@ -1,0 +1,13 @@
+{
+  "name": "logsentinel-ai-workspace",
+  "private": true,
+  "scripts": {
+    "dev": "npm --prefix frontend run dev",
+    "build": "npm --prefix frontend run build",
+    "test": "npm --prefix frontend run test",
+    "test:e2e": "npm --prefix frontend run test:e2e",
+    "lint": "npm --prefix frontend run lint",
+    "format": "npm --prefix frontend run format",
+    "typecheck": "npm --prefix frontend run typecheck"
+  }
+}
