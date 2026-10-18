@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "logsentinel-ai"
+version = "1.0.0"
+description = "Private, explainable defensive log monitoring"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.115,<1", "uvicorn[standard]>=0.34,<1", "sqlalchemy>=2.0.38,<2.1",
+  "psycopg[binary]>=3.2,<4", "alembic>=1.15,<2", "pydantic-settings>=2.8,<3",
+  "argon2-cffi>=23.1,<26", "python-multipart>=0.0.20,<1", "email-validator>=2.2,<3",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.3,<10", "httpx>=0.28,<1", "ruff>=0.11,<1", "mypy>=1.15,<2", "pytest-cov>=6,<8"]
+
+[project.scripts]
+logsentinel = "app.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["backend"]
+
+[tool.pytest.ini_options]
+testpaths = ["backend/tests"]
+pythonpath = ["backend"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "S"]
+ignore = ["E501", "B008"]
+
+[tool.ruff.lint.per-file-ignores]
+"backend/tests/*" = ["S101", "S105", "S106", "S311"]
+"backend/app/seed.py" = ["S311"]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["backend/app"]
+check_untyped_defs = true
+ignore_missing_imports = true
