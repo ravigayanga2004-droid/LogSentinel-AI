@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ArrowDownToLine, ArrowLeft, ArrowUpDown, Bookmark, ChevronDown, ChevronRight, Filter, Search, Trash2 } from 'lucide-react';
-import { api, params } from './api';
+import { api } from './api';
 import { useAction, useAuth, useCan } from './context';
 import { Badge, Dialog, Empty, ErrorState, Hash, Loading, PageTitle, Pager, Panel, Submit, Time, severities } from './components';
 import type { LogEvent, Page, Report, Source } from './types';

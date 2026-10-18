@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, workspaceId } from './api';
-import type { User, Workspace } from './types';
+import type { Role, User, Workspace } from './types';
 
 interface AuthValue { user: User; workspace: Workspace; switchWorkspace: (id: string) => void; }
 const Auth = createContext<AuthValue | null>(null);
@@ -19,7 +19,7 @@ export function AuthProvider({ user, children }: { user: User; children: ReactNo
 
 export function useCan(permission: 'admin' | 'sources' | 'ingest' | 'investigate' | 'rules' | 'export') {
   const { workspace } = useAuth();
-  const allowed = { administrator: ['admin', 'sources', 'ingest', 'investigate', 'rules', 'export'], analyst: ['ingest', 'investigate', 'rules', 'export'], viewer: [], source_admin: ['sources', 'ingest'] };
+  const allowed: Record<Role, string[]> = { administrator: ['admin', 'sources', 'ingest', 'investigate', 'rules', 'export'], analyst: ['ingest', 'investigate', 'rules', 'export'], viewer: [], source_admin: ['sources', 'ingest'] };
   return allowed[workspace.role].includes(permission);
 }
 

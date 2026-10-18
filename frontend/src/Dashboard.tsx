@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
-import { Activity, ArrowDownToLine, ArrowRight, ArrowUpRight, CalendarDays, CheckCheck, CircleHelp, Filter, Radio, RefreshCw, Server, ShieldAlert, Sparkles, Zap } from 'lucide-react';
+import { Activity, ArrowDownToLine, ArrowRight, ArrowUpRight, CalendarDays, CheckCheck, CircleHelp, Filter, Radio, RefreshCw, Server, ShieldAlert, Sparkles } from 'lucide-react';
 import { Area, AreaChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { api, params } from './api';
 import { useAction, useAuth, useCan } from './context';

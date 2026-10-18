@@ -437,7 +437,12 @@ def baselines(ctx: Context = Depends(require_workspace_access)):
 
 
 @router.post("/sources/{source_id}/preview")
-def preview_file(source_id: str, file: UploadFile = File(...), mapping: str = Form("{}"), ctx: Context = Depends(require_workspace_access)):
+def preview_file(
+    source_id: str,
+    file: UploadFile = File(...),
+    mapping: str = Form("{}"),
+    ctx: Context = Depends(require_workspace_access),
+):
     ctx.permit("ingest")
     source = ctx.get(Source, source_id)
     extension = Path(file.filename or "").suffix.lower()
@@ -447,11 +452,21 @@ def preview_file(source_id: str, file: UploadFile = File(...), mapping: str = Fo
         raise HTTPException(413, "File exceeds the upload limit")
     try:
         columns = json.loads(mapping)
-        if not isinstance(columns, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in columns.items()):
+        if not isinstance(columns, dict) or not all(
+            isinstance(k, str) and isinstance(v, str) for k, v in columns.items()
+        ):
             raise ValueError
     except ValueError:
         raise HTTPException(422, "Invalid CSV mapping") from None
     from itertools import islice
+
     from app.ingestion import prepared_record
-    rows = [{"line": number, **prepared_record(record, source.parser, ctx.workspace.settings.get("masks", []), True)} for number, record in enumerate(islice(file_records(file.file, extension, columns), 20), 1)]
+
+    rows = [
+        {
+            "line": number,
+            **prepared_record(record, source.parser, ctx.workspace.settings.get("masks", []), True),
+        }
+        for number, record in enumerate(islice(file_records(file.file, extension, columns), 20), 1)
+    ]
     return {"test_only": True, "maximum_preview_rows": 20, "items": rows}
