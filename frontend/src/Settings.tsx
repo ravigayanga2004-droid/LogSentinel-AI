@@ -3,19 +3,404 @@ import { useQuery } from '@tanstack/react-query';
 import { Eye, Plus, ShieldCheck, Users } from 'lucide-react';
 import { api } from './api';
 import { useAction, useAuth, useCan } from './context';
-import { Badge, Confirm, Dialog, ErrorState, Loading, PageTitle, Panel, Submit } from './components';
+import {
+  Badge,
+  Confirm,
+  Dialog,
+  ErrorState,
+  Loading,
+  PageTitle,
+  Panel,
+  Submit,
+} from './components';
 import type { Member, Policy } from './types';
 
 const roles = ['administrator', 'analyst', 'viewer', 'source_admin'];
-interface SettingsData { policy: Policy; raw_storage_enabled: boolean; outbound_integrations_enabled: boolean }
-export function Settings() {
-  const { workspace } = useAuth(); const can = useCan('admin'); const [memberDialog, setMemberDialog] = useState(false); const [workspaceDialog, setWorkspaceDialog] = useState(false); const [retentionConfirm, setRetentionConfirm] = useState(false); const action = useAction();
-  const query = useQuery({ queryKey: ['settings', workspace.id], queryFn: () => api<SettingsData>('/settings'), enabled: can });
-  const members = useQuery({ queryKey: ['members', workspace.id], queryFn: () => api<{ items: Member[] }>('/members'), enabled: can });
-  const preview = useQuery({ queryKey: ['retention-preview', workspace.id], queryFn: () => api<{ counts: { events: number; alerts: number; audit_logs: number }; policy: Policy }>('/retention/preview'), enabled: false });
-  async function addMember(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const result = await action.run(() => api('/members', 'POST', Object.fromEntries(new FormData(event.currentTarget))), 'Workspace member created'); if (result) setMemberDialog(false); }
-  async function addWorkspace(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const result = await action.run(() => api('/workspaces', 'POST', Object.fromEntries(new FormData(event.currentTarget))), 'Workspace created. Select it from the workspace menu.'); if (result) setWorkspaceDialog(false); }
-  if (!can) return <ErrorState error={new Error('Only workspace administrators can change these policies.')} />;
-  return <><PageTitle eyebrow="YOUR WORKSPACE / YOUR POLICIES" title="Administration" description="Manage access, privacy and retention with explicit, auditable controls." actions={<button className="button secondary" onClick={() => setWorkspaceDialog(true)}><Plus size={14} /> New workspace</button>} />{query.isPending ? <Loading /> : query.error ? <ErrorState error={query.error} /> : <div className="grid-2"><PolicyForm key={workspace.id} policy={query.data.policy} /><div className="stack"><Panel title="Privacy guarantees" action={<ShieldCheck size={17} color="var(--accent)" />}><div className="panel-content form-stack"><div><h3>Raw storage stays disabled</h3><p style={{ fontSize: 12, marginTop: 5 }}>Only redacted, normalized messages and fingerprints are stored. Source IPs and usernames are pseudonymized.</p></div><div><h3>Local, explainable detection</h3><p style={{ fontSize: 12, marginTop: 5 }}>No raw logs are sent to an external AI service. Detection never blocks users, scans targets, or changes your systems.</p></div><div><h3>Literal redaction masks</h3><p style={{ fontSize: 12, marginTop: 5 }}>Use additional literal values for personal identifiers or installation-specific secrets. Changes apply to future imports and exports; already-stored records are not retroactively rewritten.</p></div></div></Panel><Panel title="Retention cleanup" subtitle="Preview first. Every cleanup records an audit summary."><div className="panel-content form-stack"><p style={{ fontSize: 12 }}>Events and expired reports follow event retention. Only resolved or false-positive alerts are eligible for alert cleanup. Open investigations stay available.</p><button className="button secondary" onClick={() => preview.refetch()} disabled={preview.isFetching}><Eye size={14} /> {preview.isFetching ? 'Calculating…' : 'Preview eligible records'}</button>{preview.error && <p role="alert">{preview.error.message}</p>}{preview.data && <><dl className="definition-list"><dt>Events</dt><dd>{preview.data.counts.events}</dd><dt>Closed alerts</dt><dd>{preview.data.counts.alerts}</dd><dt>Audit records</dt><dd>{preview.data.counts.audit_logs}</dd></dl><button className="button danger" onClick={() => setRetentionConfirm(true)}>Run retention cleanup</button></>}</div></Panel></div></div>}<Panel title="Workspace members" subtitle="Permissions are enforced server-side for every request" action={<button className="button secondary small" onClick={() => setMemberDialog(true)}><Users size={13} /> Add member</button>}>{members.isPending ? <Loading /> : members.error ? <ErrorState error={members.error} /> : <div className="table-wrap"><table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Account</th></tr></thead><tbody>{members.data.items.map((member) => <tr key={member.id}><td className="primary-cell">{member.name}</td><td>{member.email}</td><td><select aria-label={`Role for ${member.name}`} value={member.role} disabled={action.busy} onChange={(event) => action.run(() => api(`/members/${member.id}`, 'PATCH', { role: event.target.value }), 'Workspace role updated')}>{roles.map((role) => <option key={role}>{role}</option>)}</select></td><td><Badge value={member.active ? 'healthy' : 'disabled'} /></td></tr>)}</tbody></table></div>}</Panel>{memberDialog && <Dialog title="Create a workspace member" onClose={() => setMemberDialog(false)}><form className="form-stack" onSubmit={addMember}><label className="field">Name<input name="name" required maxLength={100} autoComplete="off" /></label><label className="field">Email<input type="email" name="email" required maxLength={254} autoComplete="off" /></label><label className="field">Initial password<input type="password" name="password" minLength={12} maxLength={128} required autoComplete="new-password" /><span className="field-hint">Share securely and ask the member to change it on first use.</span></label><label className="field">Workspace role<select name="role" defaultValue="viewer">{roles.map((role) => <option key={role}>{role}</option>)}</select></label><div className="form-actions"><Submit busy={action.busy}>Create member</Submit></div></form></Dialog>}{workspaceDialog && <Dialog title="Create an isolated workspace" onClose={() => setWorkspaceDialog(false)}><form className="form-stack" onSubmit={addWorkspace}><label className="field">Workspace name<input name="name" required maxLength={100} /></label><p className="tiny">You become its first administrator. Sources, events, alerts, reports and policies are isolated from other workspaces.</p><div className="form-actions"><Submit busy={action.busy}>Create workspace</Submit></div></form></Dialog>}{retentionConfirm && <Confirm title="Permanently remove eligible records?" description={`This applies the current saved policy. The preview found ${preview.data?.counts.events ?? 0} events, ${preview.data?.counts.alerts ?? 0} closed alerts, and ${preview.data?.counts.audit_logs ?? 0} audit entries. Expired report copies and notifications are also removed. This action cannot be undone.`} busy={action.busy} onClose={() => setRetentionConfirm(false)} onConfirm={async () => { const result = await action.run(() => api('/retention/run', 'POST'), 'Retention job queued. The deletion summary will appear in the audit trail.'); if (result) { setRetentionConfirm(false); preview.refetch(); } }} />}</>;
+interface SettingsData {
+  policy: Policy;
+  raw_storage_enabled: boolean;
+  outbound_integrations_enabled: boolean;
 }
-function PolicyForm({ policy }: { policy: Policy }) { const action = useAction(); const [automatic, setAutomatic] = useState(policy.auto_retention); const [confirm, setConfirm] = useState(false); const [pending, setPending] = useState<Record<string, unknown> | null>(null); async function save(values: Record<string, unknown>) { const result = await action.run(() => api('/settings', 'PUT', values), 'Privacy and retention policy saved'); if (result) setConfirm(false); } function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const data = new FormData(event.currentTarget); const values = { event_retention_days: Number(data.get('event_retention_days')), alert_retention_days: Number(data.get('alert_retention_days')), audit_retention_days: Number(data.get('audit_retention_days')), duplicate_window_minutes: Number(data.get('duplicate_window_minutes')), privacy_mode: data.has('privacy_mode'), exports_enabled: data.has('exports_enabled'), auto_retention: automatic, masks: String(data.get('masks')).split('\n').map((value) => value.trim()).filter(Boolean) }; if (automatic && !policy.auto_retention) { setPending(values); setConfirm(true); } else save(values); } return <Panel title="Privacy & retention policies"><form className="panel-content form-stack" onSubmit={submit}><div className="fields-grid">{[['event_retention_days', 'Event retention (days)', policy.event_retention_days, 1], ['alert_retention_days', 'Closed alert retention (days)', policy.alert_retention_days, 1], ['audit_retention_days', 'Audit retention (days)', policy.audit_retention_days, 30], ['duplicate_window_minutes', 'Duplicate window (minutes)', policy.duplicate_window_minutes, 1]].map(([name, label, value, min]) => <label className="field" key={String(name)}>{label}<input name={String(name)} type="number" min={Number(min)} max={name === 'duplicate_window_minutes' ? 1440 : 3650} required defaultValue={Number(value)} /></label>)}</div><label className="checkbox-row"><input name="privacy_mode" type="checkbox" defaultChecked={policy.privacy_mode} /> Mask IP addresses in message content</label><label className="checkbox-row"><input name="exports_enabled" type="checkbox" defaultChecked={policy.exports_enabled} /> Allow authorized report exports</label><label className="checkbox-row"><input type="checkbox" checked={automatic} onChange={(event) => setAutomatic(event.target.checked)} /> Automatically run retention cleanup daily</label><p className="tiny">Automatic cleanup is opt-in and permanently removes eligible records according to the saved policy.</p><label className="field">Additional literal redaction values<textarea name="masks" defaultValue={policy.masks.join('\n')} placeholder="One exact value per line" maxLength={10000} rows={4} /><span className="field-hint">Up to 50 values, 200 characters each. Regular expressions are not executed.</span></label><div className="form-actions"><Submit busy={action.busy}>Save workspace policy</Submit></div></form>{confirm && <Confirm title="Enable automatic data deletion?" description="The worker will run daily and permanently remove records that exceed this policy, including expired report copies. Check your backups and retention periods before enabling." onClose={() => setConfirm(false)} busy={action.busy} onConfirm={() => { if (pending) save(pending); }} />}</Panel>; }
+export function Settings() {
+  const { workspace } = useAuth();
+  const can = useCan('admin');
+  const [memberDialog, setMemberDialog] = useState(false);
+  const [workspaceDialog, setWorkspaceDialog] = useState(false);
+  const [retentionConfirm, setRetentionConfirm] = useState(false);
+  const action = useAction();
+  const query = useQuery({
+    queryKey: ['settings', workspace.id],
+    queryFn: () => api<SettingsData>('/settings'),
+    enabled: can,
+  });
+  const members = useQuery({
+    queryKey: ['members', workspace.id],
+    queryFn: () => api<{ items: Member[] }>('/members'),
+    enabled: can,
+  });
+  const preview = useQuery({
+    queryKey: ['retention-preview', workspace.id],
+    queryFn: () =>
+      api<{ counts: { events: number; alerts: number; audit_logs: number }; policy: Policy }>(
+        '/retention/preview',
+      ),
+    enabled: false,
+  });
+  async function addMember(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const result = await action.run(
+      () => api('/members', 'POST', Object.fromEntries(new FormData(event.currentTarget))),
+      'Workspace member created',
+    );
+    if (result) setMemberDialog(false);
+  }
+  async function addWorkspace(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const result = await action.run(
+      () => api('/workspaces', 'POST', Object.fromEntries(new FormData(event.currentTarget))),
+      'Workspace created. Select it from the workspace menu.',
+    );
+    if (result) setWorkspaceDialog(false);
+  }
+  if (!can)
+    return (
+      <ErrorState error={new Error('Only workspace administrators can change these policies.')} />
+    );
+  return (
+    <>
+      <PageTitle
+        eyebrow="YOUR WORKSPACE / YOUR POLICIES"
+        title="Administration"
+        description="Manage access, privacy and retention with explicit, auditable controls."
+        actions={
+          <button className="button secondary" onClick={() => setWorkspaceDialog(true)}>
+            <Plus size={14} /> New workspace
+          </button>
+        }
+      />
+      {query.isPending ? (
+        <Loading />
+      ) : query.error ? (
+        <ErrorState error={query.error} />
+      ) : (
+        <div className="grid-2">
+          <PolicyForm key={workspace.id} policy={query.data.policy} />
+          <div className="stack">
+            <Panel
+              title="Privacy guarantees"
+              action={<ShieldCheck size={17} color="var(--accent)" />}
+            >
+              <div className="panel-content form-stack">
+                <div>
+                  <h3>Raw storage stays disabled</h3>
+                  <p style={{ fontSize: 12, marginTop: 5 }}>
+                    Only redacted, normalized messages and fingerprints are stored. Source IPs and
+                    usernames are pseudonymized.
+                  </p>
+                </div>
+                <div>
+                  <h3>Local, explainable detection</h3>
+                  <p style={{ fontSize: 12, marginTop: 5 }}>
+                    No raw logs are sent to an external AI service. Detection never blocks users,
+                    scans targets, or changes your systems.
+                  </p>
+                </div>
+                <div>
+                  <h3>Literal redaction masks</h3>
+                  <p style={{ fontSize: 12, marginTop: 5 }}>
+                    Use additional literal values for personal identifiers or installation-specific
+                    secrets. Changes apply to future imports and exports; already-stored records are
+                    not retroactively rewritten.
+                  </p>
+                </div>
+              </div>
+            </Panel>
+            <Panel
+              title="Retention cleanup"
+              subtitle="Preview first. Every cleanup records an audit summary."
+            >
+              <div className="panel-content form-stack">
+                <p style={{ fontSize: 12 }}>
+                  Events and expired reports follow event retention. Only resolved or false-positive
+                  alerts are eligible for alert cleanup. Open investigations stay available.
+                </p>
+                <button
+                  className="button secondary"
+                  onClick={() => preview.refetch()}
+                  disabled={preview.isFetching}
+                >
+                  <Eye size={14} />{' '}
+                  {preview.isFetching ? 'Calculating…' : 'Preview eligible records'}
+                </button>
+                {preview.error && <p role="alert">{preview.error.message}</p>}
+                {preview.data && (
+                  <>
+                    <dl className="definition-list">
+                      <dt>Events</dt>
+                      <dd>{preview.data.counts.events}</dd>
+                      <dt>Closed alerts</dt>
+                      <dd>{preview.data.counts.alerts}</dd>
+                      <dt>Audit records</dt>
+                      <dd>{preview.data.counts.audit_logs}</dd>
+                    </dl>
+                    <button className="button danger" onClick={() => setRetentionConfirm(true)}>
+                      Run retention cleanup
+                    </button>
+                  </>
+                )}
+              </div>
+            </Panel>
+          </div>
+        </div>
+      )}
+      <Panel
+        title="Workspace members"
+        subtitle="Permissions are enforced server-side for every request"
+        action={
+          <button className="button secondary small" onClick={() => setMemberDialog(true)}>
+            <Users size={13} /> Add member
+          </button>
+        }
+      >
+        {members.isPending ? (
+          <Loading />
+        ) : members.error ? (
+          <ErrorState error={members.error} />
+        ) : (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Email</th>
+                  <th>Role</th>
+                  <th>Account</th>
+                </tr>
+              </thead>
+              <tbody>
+                {members.data.items.map((member) => (
+                  <tr key={member.id}>
+                    <td className="primary-cell">{member.name}</td>
+                    <td>{member.email}</td>
+                    <td>
+                      <select
+                        aria-label={`Role for ${member.name}`}
+                        value={member.role}
+                        disabled={action.busy}
+                        onChange={(event) =>
+                          action.run(
+                            () =>
+                              api(`/members/${member.id}`, 'PATCH', { role: event.target.value }),
+                            'Workspace role updated',
+                          )
+                        }
+                      >
+                        {roles.map((role) => (
+                          <option key={role}>{role}</option>
+                        ))}
+                      </select>
+                    </td>
+                    <td>
+                      <Badge value={member.active ? 'healthy' : 'disabled'} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Panel>
+      {memberDialog && (
+        <Dialog title="Create a workspace member" onClose={() => setMemberDialog(false)}>
+          <form className="form-stack" onSubmit={addMember}>
+            <label className="field">
+              Name
+              <input name="name" required maxLength={100} autoComplete="off" />
+            </label>
+            <label className="field">
+              Email
+              <input type="email" name="email" required maxLength={254} autoComplete="off" />
+            </label>
+            <label className="field">
+              Initial password
+              <input
+                type="password"
+                name="password"
+                minLength={12}
+                maxLength={128}
+                required
+                autoComplete="new-password"
+              />
+              <span className="field-hint">
+                Share securely and ask the member to change it on first use.
+              </span>
+            </label>
+            <label className="field">
+              Workspace role
+              <select name="role" defaultValue="viewer">
+                {roles.map((role) => (
+                  <option key={role}>{role}</option>
+                ))}
+              </select>
+            </label>
+            <div className="form-actions">
+              <Submit busy={action.busy}>Create member</Submit>
+            </div>
+          </form>
+        </Dialog>
+      )}
+      {workspaceDialog && (
+        <Dialog title="Create an isolated workspace" onClose={() => setWorkspaceDialog(false)}>
+          <form className="form-stack" onSubmit={addWorkspace}>
+            <label className="field">
+              Workspace name
+              <input name="name" required maxLength={100} />
+            </label>
+            <p className="tiny">
+              You become its first administrator. Sources, events, alerts, reports and policies are
+              isolated from other workspaces.
+            </p>
+            <div className="form-actions">
+              <Submit busy={action.busy}>Create workspace</Submit>
+            </div>
+          </form>
+        </Dialog>
+      )}
+      {retentionConfirm && (
+        <Confirm
+          title="Permanently remove eligible records?"
+          description={`This applies the current saved policy. The preview found ${preview.data?.counts.events ?? 0} events, ${preview.data?.counts.alerts ?? 0} closed alerts, and ${preview.data?.counts.audit_logs ?? 0} audit entries. Expired report copies and notifications are also removed. This action cannot be undone.`}
+          busy={action.busy}
+          onClose={() => setRetentionConfirm(false)}
+          onConfirm={async () => {
+            const result = await action.run(
+              () => api('/retention/run', 'POST'),
+              'Retention job queued. The deletion summary will appear in the audit trail.',
+            );
+            if (result) {
+              setRetentionConfirm(false);
+              preview.refetch();
+            }
+          }}
+        />
+      )}
+    </>
+  );
+}
+function PolicyForm({ policy }: { policy: Policy }) {
+  const action = useAction();
+  const [automatic, setAutomatic] = useState(policy.auto_retention);
+  const [confirm, setConfirm] = useState(false);
+  const [pending, setPending] = useState<Record<string, unknown> | null>(null);
+  async function save(values: Record<string, unknown>) {
+    const result = await action.run(
+      () => api('/settings', 'PUT', values),
+      'Privacy and retention policy saved',
+    );
+    if (result) setConfirm(false);
+  }
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    const values = {
+      event_retention_days: Number(data.get('event_retention_days')),
+      alert_retention_days: Number(data.get('alert_retention_days')),
+      audit_retention_days: Number(data.get('audit_retention_days')),
+      duplicate_window_minutes: Number(data.get('duplicate_window_minutes')),
+      privacy_mode: data.has('privacy_mode'),
+      exports_enabled: data.has('exports_enabled'),
+      auto_retention: automatic,
+      masks: String(data.get('masks'))
+        .split('\n')
+        .map((value) => value.trim())
+        .filter(Boolean),
+    };
+    if (automatic && !policy.auto_retention) {
+      setPending(values);
+      setConfirm(true);
+    } else save(values);
+  }
+  return (
+    <Panel title="Privacy & retention policies">
+      <form className="panel-content form-stack" onSubmit={submit}>
+        <div className="fields-grid">
+          {[
+            ['event_retention_days', 'Event retention (days)', policy.event_retention_days, 1],
+            [
+              'alert_retention_days',
+              'Closed alert retention (days)',
+              policy.alert_retention_days,
+              1,
+            ],
+            ['audit_retention_days', 'Audit retention (days)', policy.audit_retention_days, 30],
+            [
+              'duplicate_window_minutes',
+              'Duplicate window (minutes)',
+              policy.duplicate_window_minutes,
+              1,
+            ],
+          ].map(([name, label, value, min]) => (
+            <label className="field" key={String(name)}>
+              {label}
+              <input
+                name={String(name)}
+                type="number"
+                min={Number(min)}
+                max={name === 'duplicate_window_minutes' ? 1440 : 3650}
+                required
+                defaultValue={Number(value)}
+              />
+            </label>
+          ))}
+        </div>
+        <label className="checkbox-row">
+          <input name="privacy_mode" type="checkbox" defaultChecked={policy.privacy_mode} /> Mask IP
+          addresses in message content
+        </label>
+        <label className="checkbox-row">
+          <input name="exports_enabled" type="checkbox" defaultChecked={policy.exports_enabled} />{' '}
+          Allow authorized report exports
+        </label>
+        <label className="checkbox-row">
+          <input
+            type="checkbox"
+            checked={automatic}
+            onChange={(event) => setAutomatic(event.target.checked)}
+          />{' '}
+          Automatically run retention cleanup daily
+        </label>
+        <p className="tiny">
+          Automatic cleanup is opt-in and permanently removes eligible records according to the
+          saved policy.
+        </p>
+        <label className="field">
+          Additional literal redaction values
+          <textarea
+            name="masks"
+            defaultValue={policy.masks.join('\n')}
+            placeholder="One exact value per line"
+            maxLength={10000}
+            rows={4}
+          />
+          <span className="field-hint">
+            Up to 50 values, 200 characters each. Regular expressions are not executed.
+          </span>
+        </label>
+        <div className="form-actions">
+          <Submit busy={action.busy}>Save workspace policy</Submit>
+        </div>
+      </form>
+      {confirm && (
+        <Confirm
+          title="Enable automatic data deletion?"
+          description="The worker will run daily and permanently remove records that exceed this policy, including expired report copies. Check your backups and retention periods before enabling."
+          onClose={() => setConfirm(false)}
+          busy={action.busy}
+          onConfirm={() => {
+            if (pending) save(pending);
+          }}
+        />
+      )}
+    </Panel>
+  );
+}

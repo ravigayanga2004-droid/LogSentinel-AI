@@ -1,23 +1,487 @@
 import { useState, type FormEvent } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { ArrowDownToLine, ArrowLeft, ArrowUpDown, Bookmark, ChevronDown, ChevronRight, Filter, Search, Trash2 } from 'lucide-react';
+import {
+  ArrowDownToLine,
+  ArrowLeft,
+  ArrowUpDown,
+  Bookmark,
+  ChevronDown,
+  ChevronRight,
+  Filter,
+  Search,
+  Trash2,
+} from 'lucide-react';
 import { api } from './api';
 import { useAction, useAuth, useCan } from './context';
-import { Badge, Dialog, Empty, ErrorState, Hash, Loading, PageTitle, Pager, Panel, Submit, Time, severities } from './components';
+import {
+  Badge,
+  Dialog,
+  Empty,
+  ErrorState,
+  Hash,
+  Loading,
+  PageTitle,
+  Pager,
+  Panel,
+  Submit,
+  Time,
+  severities,
+} from './components';
 import type { LogEvent, Page, Report, Source } from './types';
 
-interface Saved { id: string; name: string; filters: Record<string, string> }
-export function Events() {
-  const { workspace } = useAuth(); const [search, setSearch] = useSearchParams(); const [expanded, setExpanded] = useState(''); const [save, setSave] = useState(false); const [advanced, setAdvanced] = useState(false); const action = useAction(); const canExport = useCan('export'); const navigate = useNavigate();
-  const page = Number(search.get('page_number') ?? 1); const filterValues = Object.fromEntries(search); delete filterValues.page_number; delete filterValues.sort;
-  const query = useQuery({ queryKey: ['events', workspace.id, search.toString()], queryFn: () => api<Page<LogEvent>>(`/events?${search}`) });
-  const sources = useQuery({ queryKey: ['sources', workspace.id], queryFn: () => api<{ items: Source[] }>('/sources') });
-  const saved = useQuery({ queryKey: ['saved-searches', workspace.id], queryFn: () => api<{ items: Saved[] }>('/saved-searches') });
-  function filter(key: string, value: string) { setSearch((current) => { const next = new URLSearchParams(current); next.delete('page_number'); if (value) next.set(key, value); else next.delete(key); return next; }); }
-  async function saveSearch(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const data = new FormData(event.currentTarget); const result = await action.run(() => api('/saved-searches', 'POST', { name: data.get('name'), filters: filterValues }), 'Search saved'); if (result) setSave(false); }
-  async function exportEvents() { const report = await action.run(() => api<Report>('/reports', 'POST', { title: 'Event explorer export', format: 'csv', filters: filterValues }), 'CSV export queued'); if (report) navigate('/reports'); }
-  return <><PageTitle eyebrow="SEARCH / CORRELATE / UNDERSTAND" title="Events explorer" description="Find the evidence you need, with sensitive fields protected by default." actions={<><button className="button secondary" onClick={() => setSave(true)}><Bookmark size={14} /> Save search</button>{canExport && <button className="button" onClick={exportEvents} disabled={action.busy}><ArrowDownToLine size={14} /> Export events</button>}</>} /><div className="toolbar"><form className="filter-control search" onSubmit={(event) => { event.preventDefault(); filter('q', String(new FormData(event.currentTarget).get('q') ?? '')); }}><Search size={14} /><input name="q" aria-label="Search event messages" placeholder="Search redacted messages…" defaultValue={search.get('q') ?? ''} key={search.get('q')} maxLength={200} /><button className="icon-button" aria-label="Search events" type="submit"><ArrowUpDown size={13} /></button></form><label className="filter-control"><select aria-label="Event source" value={search.get('source_id') ?? ''} onChange={(event) => filter('source_id', event.target.value)}><option value="">All sources</option>{sources.data?.items.map((source) => <option key={source.id} value={source.id}>{source.name}</option>)}</select></label><label className="filter-control"><select aria-label="Event severity" value={search.get('severity') ?? ''} onChange={(event) => filter('severity', event.target.value)}><option value="">All severities</option>{severities.map((value) => <option key={value}>{value}</option>)}</select></label><button className="button ghost" onClick={() => setAdvanced(true)}><Filter size={13} /> More filters</button>{search.size > 0 && <button className="button ghost" onClick={() => setSearch({})}>Clear</button>}<label className="filter-control"><Bookmark size={12} /><select aria-label="Load saved search" value="" onChange={(event) => { const selected = saved.data?.items.find((row) => row.id === event.target.value); if (selected) setSearch(selected.filters); }}><option value="">Saved searches</option>{saved.data?.items.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}</select></label></div>{save && <Dialog title="Save this search" onClose={() => setSave(false)}><form onSubmit={saveSearch}><label className="field">Search name<input name="name" required maxLength={100} placeholder="e.g. Production authentication failures" /></label><p className="tiny" style={{ marginTop: 10 }}>Saved searches are private to your account and workspace.</p><div className="form-actions"><Submit busy={action.busy}>Save search</Submit></div></form>{saved.data?.items.map((row) => <div className="notification-row" key={row.id}><span>{row.name}</span><button className="icon-button" aria-label={`Delete saved search ${row.name}`} onClick={() => action.run(() => api(`/saved-searches/${row.id}`, 'DELETE'), 'Saved search removed')}><Trash2 size={14} /></button></div>)}</Dialog>}{advanced && <Dialog title="Event filters" onClose={() => setAdvanced(false)}><div className="fields-grid">{[['event_type', 'Event type'], ['category', 'Category'], ['service', 'Service'], ['source_host', 'Host'], ['username_hash', 'User hash'], ['source_ip_hash', 'Source IP hash'], ['status_code', 'HTTP status']].map(([key, label]) => <label className="field" key={key}>{label}<input type={key === 'status_code' ? 'number' : 'text'} value={search.get(key) ?? ''} onChange={(event) => filter(key, event.target.value)} maxLength={100} /></label>)}<label className="field">Parse status<select value={search.get('parse_status') ?? ''} onChange={(event) => filter('parse_status', event.target.value)}><option value="">Any result</option><option value="parsed">Parsed</option><option value="failed">Failed</option></select></label><label className="field">Start (UTC)<input type="datetime-local" value={(search.get('start') ?? '').replace('Z', '')} onChange={(event) => filter('start', event.target.value ? event.target.value + 'Z' : '')} /></label><label className="field">End (UTC)<input type="datetime-local" value={(search.get('end') ?? '').replace('Z', '')} onChange={(event) => filter('end', event.target.value ? event.target.value + 'Z' : '')} /></label><label className="checkbox-row"><input type="checkbox" checked={search.get('anomaly') === 'true'} onChange={(event) => filter('anomaly', event.target.checked ? 'true' : '')} /> Anomalous events only</label></div><div className="form-actions"><button className="button" onClick={() => setAdvanced(false)}>Apply filters</button></div></Dialog>}<Panel title="Normalized events" subtitle="Expand a row to inspect redacted evidence and correlation fields" action={<span className="muted tiny">{query.data?.total.toLocaleString() ?? '…'} matching events</span>}>{query.isPending ? <Loading /> : query.error ? <ErrorState error={query.error} retry={() => query.refetch()} /> : !query.data.items.length ? <Empty title="No events match your search" description="Broaden the filters or import logs from an authorized source." /> : <div className="table-wrap"><table><thead><tr><th aria-label="Expand event" /><th><button className="sort-button" onClick={() => filter('sort', search.get('sort') === 'asc' ? 'desc' : 'asc')}>Timestamp <ArrowUpDown size={11} /></button></th><th>Severity</th><th>Event / source</th><th>Redacted message</th><th>Parser</th><th>Signal</th></tr></thead><tbody>{query.data.items.map((row) => <EventRow key={row.id} row={row} expanded={expanded === row.id} toggle={() => setExpanded(expanded === row.id ? '' : row.id)} source={sources.data?.items.find((source) => source.id === row.source_id)?.name} />)}</tbody></table></div>}{query.data && <Pager page={page} total={query.data.total} setPage={(value) => setSearch((current) => { current.set('page_number', String(value)); return current; })} />}</Panel></>;
+interface Saved {
+  id: string;
+  name: string;
+  filters: Record<string, string>;
 }
-function EventRow({ row, expanded, toggle, source }: { row: LogEvent; expanded: boolean; toggle: () => void; source?: string }) { return <><tr><td><button className="table-action" aria-label={`Inspect event ${row.id}`} aria-expanded={expanded} onClick={toggle}>{expanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}</button></td><td><Time value={row.timestamp} /></td><td><Badge value={row.severity} /></td><td className="primary-cell">{row.event_type}<div className="cell-description">{source ?? row.source_id.slice(0, 8)}</div></td><td className="cell-message" title={row.message}>{row.message}</td><td><Badge value={row.parse_status} /></td><td>{row.anomaly_score > 0 ? <Badge value="anomaly" /> : '—'}</td></tr>{expanded && <tr className="expanded-row"><td colSpan={7}><p>{row.message}</p><dl className="definition-list"><dt>Source IP hash</dt><dd><Hash value={row.source_ip_hash} /></dd><dt>User hash</dt><dd><Hash value={row.username_hash} /></dd><dt>HTTP status / path</dt><dd>{row.status_code ?? '—'} / {row.url_path || '—'}</dd><dt>Parser version</dt><dd>{row.parser_name} v{row.parser_version}</dd><dt>Duplicate records</dt><dd>{row.duplicates}</dd></dl><Link className="text-link" style={{ marginTop: 15 }} to={`/events/${row.id}`}>Open event and related timeline <ChevronRight size={13} /></Link></td></tr>}</>; }
-export function EventDetail() { const { id } = useParams(); const { workspace } = useAuth(); const query = useQuery({ queryKey: ['event', workspace.id, id], queryFn: () => api<LogEvent>(`/events/${id}`) }); return <><Link className="text-link" to="/events"><ArrowLeft size={13} /> Back to explorer</Link><PageTitle title="Event evidence" description="A normalized, redacted event and its nearby correlated activity." />{query.isPending ? <Loading /> : query.error ? <ErrorState error={query.error} /> : <div className="grid-2"><Panel title={query.data.event_type} action={<Badge value={query.data.severity} />}><div className="panel-content"><p style={{ color: 'var(--text)' }}>{query.data.message}</p><pre>{JSON.stringify(query.data, null, 2)}</pre></div></Panel><Panel title="Related activity" subtitle="Same source and entity within 15 minutes">{query.data.related?.length ? <ol className="timeline">{query.data.related.map((row) => <li key={row.id}><Time value={row.timestamp} /><p>{row.message}</p><Badge value={row.event_type} /></li>)}</ol> : <Empty title="No nearby correlated events" description="Other events with the same source and entity hash will appear here." />}</Panel></div>}</>; }
+export function Events() {
+  const { workspace } = useAuth();
+  const [search, setSearch] = useSearchParams();
+  const [expanded, setExpanded] = useState('');
+  const [save, setSave] = useState(false);
+  const [advanced, setAdvanced] = useState(false);
+  const action = useAction();
+  const canExport = useCan('export');
+  const navigate = useNavigate();
+  const page = Number(search.get('page_number') ?? 1);
+  const filterValues = Object.fromEntries(search);
+  delete filterValues.page_number;
+  delete filterValues.sort;
+  const query = useQuery({
+    queryKey: ['events', workspace.id, search.toString()],
+    queryFn: () => api<Page<LogEvent>>(`/events?${search}`),
+  });
+  const sources = useQuery({
+    queryKey: ['sources', workspace.id],
+    queryFn: () => api<{ items: Source[] }>('/sources'),
+  });
+  const saved = useQuery({
+    queryKey: ['saved-searches', workspace.id],
+    queryFn: () => api<{ items: Saved[] }>('/saved-searches'),
+  });
+  function filter(key: string, value: string) {
+    setSearch((current) => {
+      const next = new URLSearchParams(current);
+      next.delete('page_number');
+      if (value) next.set(key, value);
+      else next.delete(key);
+      return next;
+    });
+  }
+  async function saveSearch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    const result = await action.run(
+      () => api('/saved-searches', 'POST', { name: data.get('name'), filters: filterValues }),
+      'Search saved',
+    );
+    if (result) setSave(false);
+  }
+  async function exportEvents() {
+    const report = await action.run(
+      () =>
+        api<Report>('/reports', 'POST', {
+          title: 'Event explorer export',
+          format: 'csv',
+          filters: filterValues,
+        }),
+      'CSV export queued',
+    );
+    if (report) navigate('/reports');
+  }
+  return (
+    <>
+      <PageTitle
+        eyebrow="SEARCH / CORRELATE / UNDERSTAND"
+        title="Events explorer"
+        description="Find the evidence you need, with sensitive fields protected by default."
+        actions={
+          <>
+            <button className="button secondary" onClick={() => setSave(true)}>
+              <Bookmark size={14} /> Save search
+            </button>
+            {canExport && (
+              <button className="button" onClick={exportEvents} disabled={action.busy}>
+                <ArrowDownToLine size={14} /> Export events
+              </button>
+            )}
+          </>
+        }
+      />
+      <div className="toolbar">
+        <form
+          className="filter-control search"
+          onSubmit={(event) => {
+            event.preventDefault();
+            filter('q', String(new FormData(event.currentTarget).get('q') ?? ''));
+          }}
+        >
+          <Search size={14} />
+          <input
+            name="q"
+            aria-label="Search event messages"
+            placeholder="Search redacted messages…"
+            defaultValue={search.get('q') ?? ''}
+            key={search.get('q')}
+            maxLength={200}
+          />
+          <button className="icon-button" aria-label="Search events" type="submit">
+            <ArrowUpDown size={13} />
+          </button>
+        </form>
+        <label className="filter-control">
+          <select
+            aria-label="Event source"
+            value={search.get('source_id') ?? ''}
+            onChange={(event) => filter('source_id', event.target.value)}
+          >
+            <option value="">All sources</option>
+            {sources.data?.items.map((source) => (
+              <option key={source.id} value={source.id}>
+                {source.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="filter-control">
+          <select
+            aria-label="Event severity"
+            value={search.get('severity') ?? ''}
+            onChange={(event) => filter('severity', event.target.value)}
+          >
+            <option value="">All severities</option>
+            {severities.map((value) => (
+              <option key={value}>{value}</option>
+            ))}
+          </select>
+        </label>
+        <button className="button ghost" onClick={() => setAdvanced(true)}>
+          <Filter size={13} /> More filters
+        </button>
+        {search.size > 0 && (
+          <button className="button ghost" onClick={() => setSearch({})}>
+            Clear
+          </button>
+        )}
+        <label className="filter-control">
+          <Bookmark size={12} />
+          <select
+            aria-label="Load saved search"
+            value=""
+            onChange={(event) => {
+              const selected = saved.data?.items.find((row) => row.id === event.target.value);
+              if (selected) setSearch(selected.filters);
+            }}
+          >
+            <option value="">Saved searches</option>
+            {saved.data?.items.map((row) => (
+              <option key={row.id} value={row.id}>
+                {row.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      {save && (
+        <Dialog title="Save this search" onClose={() => setSave(false)}>
+          <form onSubmit={saveSearch}>
+            <label className="field">
+              Search name
+              <input
+                name="name"
+                required
+                maxLength={100}
+                placeholder="e.g. Production authentication failures"
+              />
+            </label>
+            <p className="tiny" style={{ marginTop: 10 }}>
+              Saved searches are private to your account and workspace.
+            </p>
+            <div className="form-actions">
+              <Submit busy={action.busy}>Save search</Submit>
+            </div>
+          </form>
+          {saved.data?.items.map((row) => (
+            <div className="notification-row" key={row.id}>
+              <span>{row.name}</span>
+              <button
+                className="icon-button"
+                aria-label={`Delete saved search ${row.name}`}
+                onClick={() =>
+                  action.run(
+                    () => api(`/saved-searches/${row.id}`, 'DELETE'),
+                    'Saved search removed',
+                  )
+                }
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
+          ))}
+        </Dialog>
+      )}
+      {advanced && (
+        <Dialog title="Event filters" onClose={() => setAdvanced(false)}>
+          <div className="fields-grid">
+            {[
+              ['event_type', 'Event type'],
+              ['category', 'Category'],
+              ['service', 'Service'],
+              ['source_host', 'Host'],
+              ['username_hash', 'User hash'],
+              ['source_ip_hash', 'Source IP hash'],
+              ['status_code', 'HTTP status'],
+            ].map(([key, label]) => (
+              <label className="field" key={key}>
+                {label}
+                <input
+                  type={key === 'status_code' ? 'number' : 'text'}
+                  value={search.get(key) ?? ''}
+                  onChange={(event) => filter(key, event.target.value)}
+                  maxLength={100}
+                />
+              </label>
+            ))}
+            <label className="field">
+              Parse status
+              <select
+                value={search.get('parse_status') ?? ''}
+                onChange={(event) => filter('parse_status', event.target.value)}
+              >
+                <option value="">Any result</option>
+                <option value="parsed">Parsed</option>
+                <option value="failed">Failed</option>
+              </select>
+            </label>
+            <label className="field">
+              Start (UTC)
+              <input
+                type="datetime-local"
+                value={(search.get('start') ?? '').replace('Z', '')}
+                onChange={(event) =>
+                  filter('start', event.target.value ? event.target.value + 'Z' : '')
+                }
+              />
+            </label>
+            <label className="field">
+              End (UTC)
+              <input
+                type="datetime-local"
+                value={(search.get('end') ?? '').replace('Z', '')}
+                onChange={(event) =>
+                  filter('end', event.target.value ? event.target.value + 'Z' : '')
+                }
+              />
+            </label>
+            <label className="checkbox-row">
+              <input
+                type="checkbox"
+                checked={search.get('anomaly') === 'true'}
+                onChange={(event) => filter('anomaly', event.target.checked ? 'true' : '')}
+              />{' '}
+              Anomalous events only
+            </label>
+          </div>
+          <div className="form-actions">
+            <button className="button" onClick={() => setAdvanced(false)}>
+              Apply filters
+            </button>
+          </div>
+        </Dialog>
+      )}
+      <Panel
+        title="Normalized events"
+        subtitle="Expand a row to inspect redacted evidence and correlation fields"
+        action={
+          <span className="muted tiny">
+            {query.data?.total.toLocaleString() ?? '…'} matching events
+          </span>
+        }
+      >
+        {query.isPending ? (
+          <Loading />
+        ) : query.error ? (
+          <ErrorState error={query.error} retry={() => query.refetch()} />
+        ) : !query.data.items.length ? (
+          <Empty
+            title="No events match your search"
+            description="Broaden the filters or import logs from an authorized source."
+          />
+        ) : (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th aria-label="Expand event" />
+                  <th>
+                    <button
+                      className="sort-button"
+                      onClick={() => filter('sort', search.get('sort') === 'asc' ? 'desc' : 'asc')}
+                    >
+                      Timestamp <ArrowUpDown size={11} />
+                    </button>
+                  </th>
+                  <th>Severity</th>
+                  <th>Event / source</th>
+                  <th>Redacted message</th>
+                  <th>Parser</th>
+                  <th>Signal</th>
+                </tr>
+              </thead>
+              <tbody>
+                {query.data.items.map((row) => (
+                  <EventRow
+                    key={row.id}
+                    row={row}
+                    expanded={expanded === row.id}
+                    toggle={() => setExpanded(expanded === row.id ? '' : row.id)}
+                    source={sources.data?.items.find((source) => source.id === row.source_id)?.name}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {query.data && (
+          <Pager
+            page={page}
+            total={query.data.total}
+            setPage={(value) =>
+              setSearch((current) => {
+                current.set('page_number', String(value));
+                return current;
+              })
+            }
+          />
+        )}
+      </Panel>
+    </>
+  );
+}
+function EventRow({
+  row,
+  expanded,
+  toggle,
+  source,
+}: {
+  row: LogEvent;
+  expanded: boolean;
+  toggle: () => void;
+  source?: string;
+}) {
+  return (
+    <>
+      <tr>
+        <td>
+          <button
+            className="table-action"
+            aria-label={`Inspect event ${row.id}`}
+            aria-expanded={expanded}
+            onClick={toggle}
+          >
+            {expanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+          </button>
+        </td>
+        <td>
+          <Time value={row.timestamp} />
+        </td>
+        <td>
+          <Badge value={row.severity} />
+        </td>
+        <td className="primary-cell">
+          {row.event_type}
+          <div className="cell-description">{source ?? row.source_id.slice(0, 8)}</div>
+        </td>
+        <td className="cell-message" title={row.message}>
+          {row.message}
+        </td>
+        <td>
+          <Badge value={row.parse_status} />
+        </td>
+        <td>{row.anomaly_score > 0 ? <Badge value="anomaly" /> : '—'}</td>
+      </tr>
+      {expanded && (
+        <tr className="expanded-row">
+          <td colSpan={7}>
+            <p>{row.message}</p>
+            <dl className="definition-list">
+              <dt>Source IP hash</dt>
+              <dd>
+                <Hash value={row.source_ip_hash} />
+              </dd>
+              <dt>User hash</dt>
+              <dd>
+                <Hash value={row.username_hash} />
+              </dd>
+              <dt>HTTP status / path</dt>
+              <dd>
+                {row.status_code ?? '—'} / {row.url_path || '—'}
+              </dd>
+              <dt>Parser version</dt>
+              <dd>
+                {row.parser_name} v{row.parser_version}
+              </dd>
+              <dt>Duplicate records</dt>
+              <dd>{row.duplicates}</dd>
+            </dl>
+            <Link className="text-link" style={{ marginTop: 15 }} to={`/events/${row.id}`}>
+              Open event and related timeline <ChevronRight size={13} />
+            </Link>
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+export function EventDetail() {
+  const { id } = useParams();
+  const { workspace } = useAuth();
+  const query = useQuery({
+    queryKey: ['event', workspace.id, id],
+    queryFn: () => api<LogEvent>(`/events/${id}`),
+  });
+  return (
+    <>
+      <Link className="text-link" to="/events">
+        <ArrowLeft size={13} /> Back to explorer
+      </Link>
+      <PageTitle
+        title="Event evidence"
+        description="A normalized, redacted event and its nearby correlated activity."
+      />
+      {query.isPending ? (
+        <Loading />
+      ) : query.error ? (
+        <ErrorState error={query.error} />
+      ) : (
+        <div className="grid-2">
+          <Panel title={query.data.event_type} action={<Badge value={query.data.severity} />}>
+            <div className="panel-content">
+              <p style={{ color: 'var(--text)' }}>{query.data.message}</p>
+              <pre>{JSON.stringify(query.data, null, 2)}</pre>
+            </div>
+          </Panel>
+          <Panel title="Related activity" subtitle="Same source and entity within 15 minutes">
+            {query.data.related?.length ? (
+              <ol className="timeline">
+                {query.data.related.map((row) => (
+                  <li key={row.id}>
+                    <Time value={row.timestamp} />
+                    <p>{row.message}</p>
+                    <Badge value={row.event_type} />
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <Empty
+                title="No nearby correlated events"
+                description="Other events with the same source and entity hash will appear here."
+              />
+            )}
+          </Panel>
+        </div>
+      )}
+    </>
+  );
+}

@@ -1,31 +1,549 @@
 import { useState, type FormEvent } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, ArrowUpRight, Filter, MessageSquarePlus, Search, ShieldCheck } from 'lucide-react';
+import {
+  ArrowLeft,
+  ArrowUpRight,
+  Filter,
+  MessageSquarePlus,
+  Search,
+  ShieldCheck,
+} from 'lucide-react';
 import { api } from './api';
 import { useAction, useAuth, useCan } from './context';
-import { Badge, Empty, ErrorState, Hash, Loading, PageTitle, Pager, Panel, Submit, Time, severities, statuses } from './components';
+import {
+  Badge,
+  Empty,
+  ErrorState,
+  Hash,
+  Loading,
+  PageTitle,
+  Pager,
+  Panel,
+  Submit,
+  Time,
+  severities,
+  statuses,
+} from './components';
 import type { Alert, Member, Page } from './types';
 
 export function Alerts({ investigations = false }: { investigations?: boolean }) {
-  const { workspace, user } = useAuth(); const [search, setSearch] = useSearchParams(); const page = Number(search.get('page_number') ?? 1);
-  const query = useQuery({ queryKey: ['alerts', workspace.id, search.toString()], queryFn: () => api<Page<Alert>>(`/alerts?${search}`), refetchInterval: 30000 });
-  const members = useQuery({ queryKey: ['members', workspace.id], queryFn: () => api<{ items: Member[] }>('/members') });
-  function filter(key: string, value: string) { setSearch((current) => { const next = new URLSearchParams(current); next.delete('page_number'); if (value) next.set(key, value); else next.delete(key); return next; }); }
-  return <><PageTitle eyebrow={investigations ? 'FOLLOW THE EVIDENCE' : 'DETECT / TRIAGE / RESPOND'} title={investigations ? 'Investigations' : 'Alert inbox'} description={investigations ? 'Keep your assigned investigations moving, with evidence and notes in one place.' : 'Explainable observations, ready for a closer look. You decide what happens next.'} actions={investigations && <button className="button secondary" onClick={() => filter('assignee_id', search.get('assignee_id') ? '' : user.id)}>{search.get('assignee_id') ? 'Show all investigations' : 'Assigned to me'}</button>} /><div className="toolbar"><form className="filter-control search" onSubmit={(event) => { event.preventDefault(); filter('q', String(new FormData(event.currentTarget).get('q') ?? '')); }}><Search size={14} /><input name="q" aria-label="Search alerts" placeholder="Search alert titles…" defaultValue={search.get('q') ?? ''} maxLength={200} /><button className="icon-button" aria-label="Apply alert search"><ChevronSearch /></button></form><label className="filter-control"><Filter size={12} /><select aria-label="Alert status" value={search.get('status') ?? ''} onChange={(event) => filter('status', event.target.value)}><option value="">All statuses</option>{statuses.map((status) => <option key={status}>{status}</option>)}</select></label><label className="filter-control"><select aria-label="Alert severity" value={search.get('severity') ?? ''} onChange={(event) => filter('severity', event.target.value)}><option value="">All severities</option>{severities.map((value) => <option key={value}>{value}</option>)}</select></label><label className="filter-control"><select aria-label="Alert assignee" value={search.get('assignee_id') ?? ''} onChange={(event) => filter('assignee_id', event.target.value)}><option value="">All assignees</option>{members.data?.items.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}</select></label>{search.size > 0 && <button className="button ghost" onClick={() => setSearch({})}>Clear filters</button>}</div><Panel title={investigations ? 'Investigation queue' : 'Workspace alerts'} subtitle="Severity and confidence are separate signals; review the explanation">{query.isPending ? <Loading /> : query.error ? <ErrorState error={query.error} retry={() => query.refetch()} /> : !query.data.items.length ? <Empty title="No alerts match this view" description="Change the filters, import events, or run enabled detection rules." /> : <div className="table-wrap"><table><thead><tr><th>Alert</th><th>Severity</th><th>Status</th><th>Confidence</th><th>Assigned to</th><th>Last seen</th><th aria-label="Open investigation" /></tr></thead><tbody>{query.data.items.map((alert) => <tr key={alert.id}><td className="primary-cell"><Link to={`/alerts/${alert.id}`}>{alert.title}</Link><div className="cell-description">{alert.explanation.source_name} · {alert.event_count} observations · v{alert.rule_version}</div></td><td><Badge value={alert.severity} /></td><td><Badge value={alert.status} /></td><td>{Math.round(alert.confidence * 100)}%</td><td>{members.data?.items.find((member) => member.id === alert.assignee_id)?.name ?? 'Unassigned'}</td><td><Time value={alert.last_seen} /></td><td><Link className="table-action" to={`/alerts/${alert.id}`} aria-label={`Open ${alert.title}`}><ArrowUpRight size={15} /></Link></td></tr>)}</tbody></table></div>}{query.data && <Pager page={page} total={query.data.total} setPage={(value) => setSearch((current) => { current.set('page_number', String(value)); return current; })} />}</Panel></>;
+  const { workspace, user } = useAuth();
+  const [search, setSearch] = useSearchParams();
+  const page = Number(search.get('page_number') ?? 1);
+  const query = useQuery({
+    queryKey: ['alerts', workspace.id, search.toString()],
+    queryFn: () => api<Page<Alert>>(`/alerts?${search}`),
+    refetchInterval: 30000,
+  });
+  const members = useQuery({
+    queryKey: ['members', workspace.id],
+    queryFn: () => api<{ items: Member[] }>('/members'),
+  });
+  function filter(key: string, value: string) {
+    setSearch((current) => {
+      const next = new URLSearchParams(current);
+      next.delete('page_number');
+      if (value) next.set(key, value);
+      else next.delete(key);
+      return next;
+    });
+  }
+  return (
+    <>
+      <PageTitle
+        eyebrow={investigations ? 'FOLLOW THE EVIDENCE' : 'DETECT / TRIAGE / RESPOND'}
+        title={investigations ? 'Investigations' : 'Alert inbox'}
+        description={
+          investigations
+            ? 'Keep your assigned investigations moving, with evidence and notes in one place.'
+            : 'Explainable observations, ready for a closer look. You decide what happens next.'
+        }
+        actions={
+          investigations && (
+            <button
+              className="button secondary"
+              onClick={() => filter('assignee_id', search.get('assignee_id') ? '' : user.id)}
+            >
+              {search.get('assignee_id') ? 'Show all investigations' : 'Assigned to me'}
+            </button>
+          )
+        }
+      />
+      <div className="toolbar">
+        <form
+          className="filter-control search"
+          onSubmit={(event) => {
+            event.preventDefault();
+            filter('q', String(new FormData(event.currentTarget).get('q') ?? ''));
+          }}
+        >
+          <Search size={14} />
+          <input
+            name="q"
+            aria-label="Search alerts"
+            placeholder="Search alert titles…"
+            defaultValue={search.get('q') ?? ''}
+            maxLength={200}
+          />
+          <button className="icon-button" aria-label="Apply alert search">
+            <ChevronSearch />
+          </button>
+        </form>
+        <label className="filter-control">
+          <Filter size={12} />
+          <select
+            aria-label="Alert status"
+            value={search.get('status') ?? ''}
+            onChange={(event) => filter('status', event.target.value)}
+          >
+            <option value="">All statuses</option>
+            {statuses.map((status) => (
+              <option key={status}>{status}</option>
+            ))}
+          </select>
+        </label>
+        <label className="filter-control">
+          <select
+            aria-label="Alert severity"
+            value={search.get('severity') ?? ''}
+            onChange={(event) => filter('severity', event.target.value)}
+          >
+            <option value="">All severities</option>
+            {severities.map((value) => (
+              <option key={value}>{value}</option>
+            ))}
+          </select>
+        </label>
+        <label className="filter-control">
+          <select
+            aria-label="Alert assignee"
+            value={search.get('assignee_id') ?? ''}
+            onChange={(event) => filter('assignee_id', event.target.value)}
+          >
+            <option value="">All assignees</option>
+            {members.data?.items.map((member) => (
+              <option key={member.id} value={member.id}>
+                {member.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        {search.size > 0 && (
+          <button className="button ghost" onClick={() => setSearch({})}>
+            Clear filters
+          </button>
+        )}
+      </div>
+      <Panel
+        title={investigations ? 'Investigation queue' : 'Workspace alerts'}
+        subtitle="Severity and confidence are separate signals; review the explanation"
+      >
+        {query.isPending ? (
+          <Loading />
+        ) : query.error ? (
+          <ErrorState error={query.error} retry={() => query.refetch()} />
+        ) : !query.data.items.length ? (
+          <Empty
+            title="No alerts match this view"
+            description="Change the filters, import events, or run enabled detection rules."
+          />
+        ) : (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Alert</th>
+                  <th>Severity</th>
+                  <th>Status</th>
+                  <th>Confidence</th>
+                  <th>Assigned to</th>
+                  <th>Last seen</th>
+                  <th aria-label="Open investigation" />
+                </tr>
+              </thead>
+              <tbody>
+                {query.data.items.map((alert) => (
+                  <tr key={alert.id}>
+                    <td className="primary-cell">
+                      <Link to={`/alerts/${alert.id}`}>{alert.title}</Link>
+                      <div className="cell-description">
+                        {alert.explanation.source_name} · {alert.event_count} observations · v
+                        {alert.rule_version}
+                      </div>
+                    </td>
+                    <td>
+                      <Badge value={alert.severity} />
+                    </td>
+                    <td>
+                      <Badge value={alert.status} />
+                    </td>
+                    <td>{Math.round(alert.confidence * 100)}%</td>
+                    <td>
+                      {members.data?.items.find((member) => member.id === alert.assignee_id)
+                        ?.name ?? 'Unassigned'}
+                    </td>
+                    <td>
+                      <Time value={alert.last_seen} />
+                    </td>
+                    <td>
+                      <Link
+                        className="table-action"
+                        to={`/alerts/${alert.id}`}
+                        aria-label={`Open ${alert.title}`}
+                      >
+                        <ArrowUpRight size={15} />
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {query.data && (
+          <Pager
+            page={page}
+            total={query.data.total}
+            setPage={(value) =>
+              setSearch((current) => {
+                current.set('page_number', String(value));
+                return current;
+              })
+            }
+          />
+        )}
+      </Panel>
+    </>
+  );
 }
-function ChevronSearch() { return <ArrowUpRight size={13} />; }
+function ChevronSearch() {
+  return <ArrowUpRight size={13} />;
+}
 export function AlertDetail() {
-  const { id } = useParams(); const { workspace } = useAuth(); const canEdit = useCan('investigate');
-  const query = useQuery({ queryKey: ['alert', workspace.id, id], queryFn: () => api<Alert>(`/alerts/${id}`) });
-  const members = useQuery({ queryKey: ['members', workspace.id], queryFn: () => api<{ items: Member[] }>('/members') });
-  if (query.isPending) return <Loading />; if (query.error) return <ErrorState error={query.error} retry={() => query.refetch()} />;
+  const { id } = useParams();
+  const { workspace } = useAuth();
+  const canEdit = useCan('investigate');
+  const query = useQuery({
+    queryKey: ['alert', workspace.id, id],
+    queryFn: () => api<Alert>(`/alerts/${id}`),
+  });
+  const members = useQuery({
+    queryKey: ['members', workspace.id],
+    queryFn: () => api<{ items: Member[] }>('/members'),
+  });
+  if (query.isPending) return <Loading />;
+  if (query.error) return <ErrorState error={query.error} retry={() => query.refetch()} />;
   const alert = query.data;
-  return <><Link className="text-link" to="/alerts"><ArrowLeft size={13} /> Back to alert inbox</Link><PageTitle eyebrow={`INVESTIGATION / ${alert.id.slice(0, 8).toUpperCase()}`} title={alert.title} description={alert.description || 'Review the evidence, record your findings, and keep the investigation moving.'} actions={<><Badge value={alert.severity} /><Badge value={alert.status} /></>} /><div className="details-grid"><div className="stack"><Panel title="Why this was flagged" subtitle={`Detection rule v${alert.rule_version} · ${alert.explanation.source_name}`}><div className="panel-content"><p style={{ color: 'var(--text)', fontSize: 14 }}>{alert.explanation.summary}</p><div className="detail-stats"><div><strong>{alert.explanation.observed}</strong><span>observed value</span></div><div><strong>{alert.explanation.threshold}</strong><span>trigger threshold</span></div><div><strong>{Math.round(alert.confidence * 100)}%</strong><span>confidence</span></div></div><dl className="definition-list"><dt>Window</dt><dd>{alert.explanation.window_minutes} minutes</dd><dt>Entity</dt><dd><Hash value={alert.explanation.group} /></dd><dt>First observed</dt><dd><Time value={alert.first_seen} full /></dd><dt>Last observed</dt><dd><Time value={alert.last_seen} full /></dd><dt>Suppressed until</dt><dd><Time value={alert.suppressed_until} full /></dd></dl><div className="callout warning" style={{ marginTop: 20, marginBottom: 0 }}><ShieldCheck size={16} /><p>{alert.explanation.limitation}</p></div></div></Panel><Panel title="Evidence timeline" subtitle="Chronological matching events · up to 100 references per alert">{alert.events?.length ? <ol className="timeline">{alert.events.map((event) => <li key={event.id}><Time value={event.timestamp} /><p>{event.message}</p><div style={{ display: 'flex', gap: 10, alignItems: 'center' }}><Badge value={event.event_type} /><Link className="text-link" to={`/events/${event.id}`}>Inspect event <ArrowUpRight size={12} /></Link></div></li>)}</ol> : <Empty title="Source-level observation" description="This alert is based on ingestion health or aggregate statistics. Review source health and nearby events." />}</Panel><Panel title="Investigation notes" subtitle="Collaborate without exposing sensitive log content">{alert.notes?.map((note) => <div className="note" key={note.id}><small>{members.data?.items.find((member) => member.id === note.author_id)?.name ?? 'Workspace member'} · <Time value={note.created_at} /></small><p>{note.body}</p>{!!note.evidence.length && <span className="tiny muted">{note.evidence.length} evidence references attached</span>}</div>)}{!alert.notes?.length && <Empty title="Start the investigation record" description="Add context, verified findings and evidence references for your team." />}{canEdit && <AddNote alert={alert} />}</Panel></div><div className="stack">{canEdit && <AlertEditor key={alert.id + alert.status} alert={alert} members={members.data?.items ?? []} />}<Panel title="Recommended next steps"><div className="panel-content"><ol style={{ paddingLeft: 17, margin: 0 }}>{alert.explanation.steps.map((step) => <li key={step} style={{ paddingBottom: 15, fontSize: 12, color: 'var(--muted)' }}>{step}</li>)}</ol></div></Panel><Panel title="Activity history"><div className="panel-content form-stack">{alert.history?.map((entry) => <div key={entry.id}><p style={{ fontSize: 11 }}>{entry.action.replaceAll('.', ' › ').replaceAll('_', ' ')}</p><span className="tiny muted"><Time value={entry.created_at} /></span></div>)}</div></Panel>{!!alert.similar?.length && <Panel title="Related observations"><div className="panel-content form-stack">{alert.similar.map((row) => <Link className="text-link" key={row.id} to={`/alerts/${row.id}`}>{row.title} <ArrowUpRight size={12} /></Link>)}</div></Panel>}</div></div></>;
+  return (
+    <>
+      <Link className="text-link" to="/alerts">
+        <ArrowLeft size={13} /> Back to alert inbox
+      </Link>
+      <PageTitle
+        eyebrow={`INVESTIGATION / ${alert.id.slice(0, 8).toUpperCase()}`}
+        title={alert.title}
+        description={
+          alert.description ||
+          'Review the evidence, record your findings, and keep the investigation moving.'
+        }
+        actions={
+          <>
+            <Badge value={alert.severity} />
+            <Badge value={alert.status} />
+          </>
+        }
+      />
+      <div className="details-grid">
+        <div className="stack">
+          <Panel
+            title="Why this was flagged"
+            subtitle={`Detection rule v${alert.rule_version} · ${alert.explanation.source_name}`}
+          >
+            <div className="panel-content">
+              <p style={{ color: 'var(--text)', fontSize: 14 }}>{alert.explanation.summary}</p>
+              <div className="detail-stats">
+                <div>
+                  <strong>{alert.explanation.observed}</strong>
+                  <span>observed value</span>
+                </div>
+                <div>
+                  <strong>{alert.explanation.threshold}</strong>
+                  <span>trigger threshold</span>
+                </div>
+                <div>
+                  <strong>{Math.round(alert.confidence * 100)}%</strong>
+                  <span>confidence</span>
+                </div>
+              </div>
+              <dl className="definition-list">
+                <dt>Window</dt>
+                <dd>{alert.explanation.window_minutes} minutes</dd>
+                <dt>Entity</dt>
+                <dd>
+                  <Hash value={alert.explanation.group} />
+                </dd>
+                <dt>First observed</dt>
+                <dd>
+                  <Time value={alert.first_seen} full />
+                </dd>
+                <dt>Last observed</dt>
+                <dd>
+                  <Time value={alert.last_seen} full />
+                </dd>
+                <dt>Suppressed until</dt>
+                <dd>
+                  <Time value={alert.suppressed_until} full />
+                </dd>
+              </dl>
+              <div className="callout warning" style={{ marginTop: 20, marginBottom: 0 }}>
+                <ShieldCheck size={16} />
+                <p>{alert.explanation.limitation}</p>
+              </div>
+            </div>
+          </Panel>
+          <Panel
+            title="Evidence timeline"
+            subtitle="Chronological matching events · up to 100 references per alert"
+          >
+            {alert.events?.length ? (
+              <ol className="timeline">
+                {alert.events.map((event) => (
+                  <li key={event.id}>
+                    <Time value={event.timestamp} />
+                    <p>{event.message}</p>
+                    <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                      <Badge value={event.event_type} />
+                      <Link className="text-link" to={`/events/${event.id}`}>
+                        Inspect event <ArrowUpRight size={12} />
+                      </Link>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <Empty
+                title="Source-level observation"
+                description="This alert is based on ingestion health or aggregate statistics. Review source health and nearby events."
+              />
+            )}
+          </Panel>
+          <Panel
+            title="Investigation notes"
+            subtitle="Collaborate without exposing sensitive log content"
+          >
+            {alert.notes?.map((note) => (
+              <div className="note" key={note.id}>
+                <small>
+                  {members.data?.items.find((member) => member.id === note.author_id)?.name ??
+                    'Workspace member'}{' '}
+                  · <Time value={note.created_at} />
+                </small>
+                <p>{note.body}</p>
+                {!!note.evidence.length && (
+                  <span className="tiny muted">
+                    {note.evidence.length} evidence references attached
+                  </span>
+                )}
+              </div>
+            ))}
+            {!alert.notes?.length && (
+              <Empty
+                title="Start the investigation record"
+                description="Add context, verified findings and evidence references for your team."
+              />
+            )}
+            {canEdit && <AddNote alert={alert} />}
+          </Panel>
+        </div>
+        <div className="stack">
+          {canEdit && (
+            <AlertEditor
+              key={alert.id + alert.status}
+              alert={alert}
+              members={members.data?.items ?? []}
+            />
+          )}
+          <Panel title="Recommended next steps">
+            <div className="panel-content">
+              <ol style={{ paddingLeft: 17, margin: 0 }}>
+                {alert.explanation.steps.map((step) => (
+                  <li key={step} style={{ paddingBottom: 15, fontSize: 12, color: 'var(--muted)' }}>
+                    {step}
+                  </li>
+                ))}
+              </ol>
+            </div>
+          </Panel>
+          <Panel title="Activity history">
+            <div className="panel-content form-stack">
+              {alert.history?.map((entry) => (
+                <div key={entry.id}>
+                  <p style={{ fontSize: 11 }}>
+                    {entry.action.replaceAll('.', ' › ').replaceAll('_', ' ')}
+                  </p>
+                  <span className="tiny muted">
+                    <Time value={entry.created_at} />
+                  </span>
+                </div>
+              ))}
+            </div>
+          </Panel>
+          {!!alert.similar?.length && (
+            <Panel title="Related observations">
+              <div className="panel-content form-stack">
+                {alert.similar.map((row) => (
+                  <Link className="text-link" key={row.id} to={`/alerts/${row.id}`}>
+                    {row.title} <ArrowUpRight size={12} />
+                  </Link>
+                ))}
+              </div>
+            </Panel>
+          )}
+        </div>
+      </div>
+    </>
+  );
 }
 function AlertEditor({ alert, members }: { alert: Alert; members: Member[] }) {
-  const action = useAction(); const [status, setStatus] = useState(alert.status);
-  async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const data = new FormData(event.currentTarget); await action.run(() => api(`/alerts/${alert.id}`, 'PATCH', { status, severity: data.get('severity'), assignee_id: data.get('assignee_id') || null, tags: String(data.get('tags')).split(',').map((value) => value.trim()).filter(Boolean), resolution_reason: data.get('resolution_reason') || '', ...(status === 'SUPPRESSED' ? { suppression_minutes: Number(data.get('suppression_minutes')) } : {}) }), 'Investigation updated'); }
-  return <Panel title="Manage investigation"><form className="panel-content form-stack" onSubmit={submit}><label className="field">Status<select value={status} onChange={(event) => setStatus(event.target.value)}>{statuses.map((value) => <option key={value}>{value}</option>)}</select></label><label className="field">Assignee<select name="assignee_id" defaultValue={alert.assignee_id ?? ''}><option value="">Unassigned</option>{members.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}</select></label><label className="field">Severity<select name="severity" defaultValue={alert.severity}>{severities.map((value) => <option key={value}>{value}</option>)}</select></label><label className="field">Tags<input name="tags" defaultValue={alert.tags.join(', ')} placeholder="Comma-separated tags" maxLength={500} /></label>{status === 'SUPPRESSED' && <label className="field">Suppress for (minutes)<input type="number" name="suppression_minutes" min={1} max={43200} defaultValue={60} required /><span className="field-hint">Suppression expires automatically. Detection resumes afterward.</span></label>}<label className="field">Resolution reason<textarea name="resolution_reason" defaultValue={alert.resolution_reason} required={['RESOLVED', 'FALSE_POSITIVE'].includes(status)} maxLength={2000} placeholder="What did you verify?" /></label><Submit busy={action.busy}>Update investigation</Submit></form></Panel>;
+  const action = useAction();
+  const [status, setStatus] = useState(alert.status);
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    await action.run(
+      () =>
+        api(`/alerts/${alert.id}`, 'PATCH', {
+          status,
+          severity: data.get('severity'),
+          assignee_id: data.get('assignee_id') || null,
+          tags: String(data.get('tags'))
+            .split(',')
+            .map((value) => value.trim())
+            .filter(Boolean),
+          resolution_reason: data.get('resolution_reason') || '',
+          ...(status === 'SUPPRESSED'
+            ? { suppression_minutes: Number(data.get('suppression_minutes')) }
+            : {}),
+        }),
+      'Investigation updated',
+    );
+  }
+  return (
+    <Panel title="Manage investigation">
+      <form className="panel-content form-stack" onSubmit={submit}>
+        <label className="field">
+          Status
+          <select value={status} onChange={(event) => setStatus(event.target.value)}>
+            {statuses.map((value) => (
+              <option key={value}>{value}</option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          Assignee
+          <select name="assignee_id" defaultValue={alert.assignee_id ?? ''}>
+            <option value="">Unassigned</option>
+            {members.map((member) => (
+              <option key={member.id} value={member.id}>
+                {member.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          Severity
+          <select name="severity" defaultValue={alert.severity}>
+            {severities.map((value) => (
+              <option key={value}>{value}</option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          Tags
+          <input
+            name="tags"
+            defaultValue={alert.tags.join(', ')}
+            placeholder="Comma-separated tags"
+            maxLength={500}
+          />
+        </label>
+        {status === 'SUPPRESSED' && (
+          <label className="field">
+            Suppress for (minutes)
+            <input
+              type="number"
+              name="suppression_minutes"
+              min={1}
+              max={43200}
+              defaultValue={60}
+              required
+            />
+            <span className="field-hint">
+              Suppression expires automatically. Detection resumes afterward.
+            </span>
+          </label>
+        )}
+        <label className="field">
+          Resolution reason
+          <textarea
+            name="resolution_reason"
+            defaultValue={alert.resolution_reason}
+            required={['RESOLVED', 'FALSE_POSITIVE'].includes(status)}
+            maxLength={2000}
+            placeholder="What did you verify?"
+          />
+        </label>
+        <Submit busy={action.busy}>Update investigation</Submit>
+      </form>
+    </Panel>
+  );
 }
-function AddNote({ alert }: { alert: Alert }) { const action = useAction(); async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const form = event.currentTarget; const data = new FormData(form); const result = await action.run(() => api(`/alerts/${alert.id}/notes`, 'POST', { body: data.get('body'), evidence: data.getAll('evidence') }), 'Note added'); if (result) form.reset(); } return <form className="panel-content form-stack" onSubmit={submit}><label className="field">Your investigation note<textarea name="body" required maxLength={5000} placeholder="Record verified observations, context and next steps…" /></label>{!!alert.events?.length && <label className="field">Attach evidence (optional)<select name="evidence" multiple size={3}>{alert.events.map((event) => <option key={event.id} value={event.id}>{event.event_type} · {event.id.slice(0, 8)}</option>)}</select><span className="field-hint">Use Ctrl or Command to select multiple events.</span></label>}<div className="form-actions"><Submit busy={action.busy}><MessageSquarePlus size={14} /> Add note</Submit></div></form>; }
+function AddNote({ alert }: { alert: Alert }) {
+  const action = useAction();
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    const result = await action.run(
+      () =>
+        api(`/alerts/${alert.id}/notes`, 'POST', {
+          body: data.get('body'),
+          evidence: data.getAll('evidence'),
+        }),
+      'Note added',
+    );
+    if (result) form.reset();
+  }
+  return (
+    <form className="panel-content form-stack" onSubmit={submit}>
+      <label className="field">
+        Your investigation note
+        <textarea
+          name="body"
+          required
+          maxLength={5000}
+          placeholder="Record verified observations, context and next steps…"
+        />
+      </label>
+      {!!alert.events?.length && (
+        <label className="field">
+          Attach evidence (optional)
+          <select name="evidence" multiple size={3}>
+            {alert.events.map((event) => (
+              <option key={event.id} value={event.id}>
+                {event.event_type} · {event.id.slice(0, 8)}
+              </option>
+            ))}
+          </select>
+          <span className="field-hint">Use Ctrl or Command to select multiple events.</span>
+        </label>
+      )}
+      <div className="form-actions">
+        <Submit busy={action.busy}>
+          <MessageSquarePlus size={14} /> Add note
+        </Submit>
+      </div>
+    </form>
+  );
+}

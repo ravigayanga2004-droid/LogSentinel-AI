@@ -20,3 +20,5 @@ data/
 artifacts/
 *.log
 .DS_Store
+*.tsbuildinfo
+*-output.txt
