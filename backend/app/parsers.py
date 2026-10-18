@@ -1,4 +1,5 @@
 """Versioned, bounded parsers. Input is data and is never executed."""
+
 import csv
 import io
 import json
@@ -11,8 +12,13 @@ from app.db import utcnow
 
 PARSERS = ("auto", "json", "linux_auth", "nginx", "apache", "key_value", "generic", "windows")
 ACCESS = re.compile(r'^(\S+) \S+ \S+ \[([^\]]+)\] "([A-Z]+) (\S+)(?: [^"\n]*)?" (\d{3})(?: .*)?$')
-AUTH = re.compile(r"(?P<ts>[A-Z][a-z]{2}\s+\d+\s+\d{2}:\d{2}:\d{2}|\d{4}-\d\d-\d\dT\S+)\s+(?P<host>\S+)\s+(?P<process>[\w/-]+)(?:\[\d+\])?:\s*(?P<message>.*)")
-LOGIN = re.compile(r"(?P<action>Failed|Accepted) (?:password|publickey) for (?:invalid user )?(?P<user>\S+) from (?P<ip>\S+)", re.I)
+AUTH = re.compile(
+    r"(?P<ts>[A-Z][a-z]{2}\s+\d+\s+\d{2}:\d{2}:\d{2}|\d{4}-\d\d-\d\dT\S+)\s+(?P<host>\S+)\s+(?P<process>[\w/-]+)(?:\[\d+\])?:\s*(?P<message>.*)"
+)
+LOGIN = re.compile(
+    r"(?P<action>Failed|Accepted) (?:password|publickey) for (?:invalid user )?(?P<user>\S+) from (?P<ip>\S+)",
+    re.I,
+)
 
 
 class ParseError(ValueError):
@@ -43,7 +49,17 @@ def parse_timestamp(value: Any) -> datetime:
 
 def severity(value: Any) -> str:
     text = str(value).lower()
-    return {"fatal": "critical", "emergency": "critical", "error": "high", "err": "high", "warning": "medium", "warn": "medium", "debug": "low", "information": "info", "informational": "info"}.get(text, text if text in {"critical", "high", "medium", "low", "info"} else "info")
+    return {
+        "fatal": "critical",
+        "emergency": "critical",
+        "error": "high",
+        "err": "high",
+        "warning": "medium",
+        "warn": "medium",
+        "debug": "low",
+        "information": "info",
+        "informational": "info",
+    }.get(text, text if text in {"critical", "high", "medium", "low", "info"} else "info")
 
 
 def normalize(obj: dict, parser: str) -> dict:
@@ -58,11 +74,16 @@ def normalize(obj: dict, parser: str) -> dict:
         if not 100 <= code <= 599:
             raise ParseError("HTTP status must be between 100 and 599")
     category = str(obj.get("category", "web" if code else "application"))[:40]
-    event_type = str(obj.get("event_type", obj.get("eventType", "http_request" if code else "log")))[:60]
+    event_type = str(
+        obj.get("event_type", obj.get("eventType", "http_request" if code else "log"))
+    )[:60]
     return {
         "timestamp": parse_timestamp(obj.get("timestamp", obj.get("time", obj.get("TimeCreated")))),
-        "message": message[:16000], "severity": severity(obj.get("severity", obj.get("level", "info"))),
-        "event_type": event_type, "category": category, "status_code": code,
+        "message": message[:16000],
+        "severity": severity(obj.get("severity", obj.get("level", "info"))),
+        "event_type": event_type,
+        "category": category,
+        "status_code": code,
         "username": str(obj.get("username", obj.get("user", "")))[:200],
         "source_ip": str(obj.get("source_ip", obj.get("ip", obj.get("remote_addr", ""))))[:100],
         "source_host": str(obj.get("host", obj.get("source_host", "")))[:100],
@@ -70,7 +91,12 @@ def normalize(obj: dict, parser: str) -> dict:
         "url_path": str(obj.get("url_path", obj.get("path", "")))[:2000],
         "http_method": str(obj.get("method", ""))[:16],
         "outcome": str(obj.get("outcome", "failure" if code and code >= 400 else "unknown"))[:30],
-        "parser_name": parser, "details": {"metadata": obj.get("metadata", {}), "request_id": str(obj.get("request_id", ""))[:100], "process": str(obj.get("process", ""))[:100]},
+        "parser_name": parser,
+        "details": {
+            "metadata": obj.get("metadata", {}),
+            "request_id": str(obj.get("request_id", ""))[:100],
+            "process": str(obj.get("process", ""))[:100],
+        },
     }
 
 
@@ -88,15 +114,43 @@ def parse_line(line: str, parser: str = "auto") -> dict:
         access = ACCESS.match(line)
         if access and parser in {"auto", "nginx", "apache"}:
             ip, timestamp, method, path, code = access.groups()
-            return normalize({"message": f"{method} {path.split('?')[0]} returned {code}", "timestamp": timestamp, "ip": ip, "method": method, "path": path, "status": code, "severity": "error" if int(code) >= 500 else "warning" if int(code) >= 400 else "info"}, "apache" if parser == "apache" else "nginx")
+            return normalize(
+                {
+                    "message": f"{method} {path.split('?')[0]} returned {code}",
+                    "timestamp": timestamp,
+                    "ip": ip,
+                    "method": method,
+                    "path": path,
+                    "status": code,
+                    "severity": "error"
+                    if int(code) >= 500
+                    else "warning"
+                    if int(code) >= 400
+                    else "info",
+                },
+                "apache" if parser == "apache" else "nginx",
+            )
         auth = AUTH.match(line)
         if auth and parser in {"auto", "linux_auth"}:
             fields = auth.groupdict()
             login = LOGIN.search(fields["message"])
-            obj = {"message": fields["message"], "timestamp": fields["ts"], "host": fields["host"], "service": fields["process"], "category": "authentication", "event_type": "auth_event"}
+            obj = {
+                "message": fields["message"],
+                "timestamp": fields["ts"],
+                "host": fields["host"],
+                "service": fields["process"],
+                "category": "authentication",
+                "event_type": "auth_event",
+            }
             if login:
                 failed = login["action"].lower() == "failed"
-                obj.update(username=login["user"], ip=login["ip"], event_type="login_failed" if failed else "login_success", severity="warning" if failed else "info", outcome="failure" if failed else "success")
+                obj.update(
+                    username=login["user"],
+                    ip=login["ip"],
+                    event_type="login_failed" if failed else "login_success",
+                    severity="warning" if failed else "info",
+                    outcome="failure" if failed else "success",
+                )
             return normalize(obj, "linux_auth")
         if parser == "key_value" or (parser == "auto" and re.search(r"\b(?:message|msg)=", line)):
             fields = dict(part.split("=", 1) for part in shlex.split(line) if "=" in part)
@@ -105,7 +159,14 @@ def parse_line(line: str, parser: str = "auto") -> dict:
             raise ParseError("Record does not match the selected parser")
         level = re.search(r"\b(CRITICAL|ERROR|WARN(?:ING)?|INFO|DEBUG)\b", line, re.I)
         timestamp = re.match(r"^(\d{4}-\d\d-\d\d[T ][\d:.]+(?:Z|[+-]\d\d:\d\d)?)", line)
-        return normalize({"message": line, "severity": level[1] if level else "info", "timestamp": timestamp[1] if timestamp else None}, "generic")
+        return normalize(
+            {
+                "message": line,
+                "severity": level[1] if level else "info",
+                "timestamp": timestamp[1] if timestamp else None,
+            },
+            "generic",
+        )
     except (ValueError, TypeError, OverflowError, KeyError, RecursionError) as exc:
         if isinstance(exc, ParseError):
             raise

@@ -21,18 +21,38 @@ def serialize(obj) -> dict[str, Any]:
         value = getattr(obj, column.key)
         if isinstance(value, datetime):
             from app.db import aware
+
             value = aware(value).isoformat()
         result[column.key] = value
     return result
 
 
-def create_audit_log(db: Session, workspace_id: str, actor_id: str | None, action: str, entity_type: str, entity_id: str = "", details: dict | None = None):
-    db.add(Audit(workspace_id=workspace_id, actor_id=actor_id, action=action, entity_type=entity_type, entity_id=entity_id, details=redact_sensitive_fields(details or {})))
+def create_audit_log(
+    db: Session,
+    workspace_id: str,
+    actor_id: str | None,
+    action: str,
+    entity_type: str,
+    entity_id: str = "",
+    details: dict | None = None,
+):
+    db.add(
+        Audit(
+            workspace_id=workspace_id,
+            actor_id=actor_id,
+            action=action,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            details=redact_sensitive_fields(details or {}),
+        )
+    )
 
 
 def require_auth(request: Request, db: Session = Depends(get_db)) -> User:
     raw = request.cookies.get("ls_session", "")
-    session = db.scalar(select(AuthSession).where(AuthSession.token_hash == digest(raw))) if raw else None
+    session = (
+        db.scalar(select(AuthSession).where(AuthSession.token_hash == digest(raw))) if raw else None
+    )
     if not session or is_expired(session.expires_at):
         raise HTTPException(401, "Please sign in to continue")
     user = db.get(User, session.user_id)
@@ -41,6 +61,7 @@ def require_auth(request: Request, db: Session = Depends(get_db)) -> User:
     if request.method not in {"GET", "HEAD", "OPTIONS"}:
         csrf = request.headers.get("x-csrf-token", "")
         import hmac
+
         if not csrf or not hmac.compare_digest(session.csrf_hash, digest(csrf)):
             raise HTTPException(403, "Security token missing or expired. Refresh and try again.")
     request.state.session = session
@@ -56,7 +77,9 @@ class Context:
         require_permission(self.member.role, permission)
 
     def get(self, model, resource_id: str):
-        resource = self.db.scalar(select(model).where(model.id == resource_id, model.workspace_id == self.wid))
+        resource = self.db.scalar(
+            select(model).where(model.id == resource_id, model.workspace_id == self.wid)
+        )
         if not resource:
             raise HTTPException(404, "Resource not found in this workspace")
         return resource
@@ -65,7 +88,9 @@ class Context:
         create_audit_log(self.db, self.wid, self.user.id, action, model, entity_id, details)
 
 
-def require_workspace_access(request: Request, db: Session = Depends(get_db), user: User = Depends(require_auth)) -> Context:
+def require_workspace_access(
+    request: Request, db: Session = Depends(get_db), user: User = Depends(require_auth)
+) -> Context:
     wid = request.headers.get("x-workspace-id")
     query = select(Member).where(Member.user_id == user.id)
     if wid:

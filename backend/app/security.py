@@ -18,7 +18,16 @@ hasher = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=2)
 
 # Permissions are explicit, version-controlled policy rather than editable database grants.
 PERMISSIONS = {
-    "administrator": {"read", "investigate", "sources", "ingest", "rules", "export", "admin", "audit"},
+    "administrator": {
+        "read",
+        "investigate",
+        "sources",
+        "ingest",
+        "rules",
+        "export",
+        "admin",
+        "audit",
+    },
     "analyst": {"read", "investigate", "ingest", "rules", "export"},
     "viewer": {"read"},
     "source_admin": {"read", "sources", "ingest"},
@@ -49,7 +58,9 @@ def digest(value: str) -> str:
 def entity_hash(value: str) -> str:
     if not value:
         return ""
-    return hmac.new(get_settings().secret_key.encode(), value.strip().lower().encode(), hashlib.sha256).hexdigest()
+    return hmac.new(
+        get_settings().secret_key.encode(), value.strip().lower().encode(), hashlib.sha256
+    ).hexdigest()
 
 
 def require_permission(role: str, permission: str):
@@ -69,13 +80,19 @@ def rate_limit(db: Session, key: str, limit: int, seconds: int):
                 db.flush()
         except IntegrityError:
             pass
-    db.execute(update(RateBucket).where(RateBucket.key == key, RateBucket.expires_at <= now).values(count=0, expires_at=now + timedelta(seconds=seconds)))
+    db.execute(
+        update(RateBucket)
+        .where(RateBucket.key == key, RateBucket.expires_at <= now)
+        .values(count=0, expires_at=now + timedelta(seconds=seconds))
+    )
     db.execute(update(RateBucket).where(RateBucket.key == key).values(count=RateBucket.count + 1))
     count = db.scalar(select(RateBucket.count).where(RateBucket.key == key)) or 0
     # Persist failed attempts even when the route returns an authentication error.
     db.commit()
     if count > limit:
-        raise HTTPException(429, "Too many attempts. Please try again later.", headers={"Retry-After": str(seconds)})
+        raise HTTPException(
+            429, "Too many attempts. Please try again later.", headers={"Retry-After": str(seconds)}
+        )
 
 
 def is_expired(value) -> bool:

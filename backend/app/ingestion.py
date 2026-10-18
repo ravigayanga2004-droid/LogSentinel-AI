@@ -25,20 +25,37 @@ def prepared_record(line: str | dict, parser: str, masks: list[str], privacy: bo
         safe["timestamp"] = parsed["timestamp"].isoformat()
         return {"event": safe, "fingerprint": fingerprint}
     except (ParseError, ValueError, RecursionError):
-        return {"error": "Record did not match the parser or required schema", "fingerprint": fingerprint}
+        return {
+            "error": "Record did not match the parser or required schema",
+            "fingerprint": fingerprint,
+        }
 
 
-def stage_records(records, source: Source, policy: dict, allow_partial: bool = True) -> tuple[str, dict]:
+def stage_records(
+    records, source: Source, policy: dict, allow_partial: bool = True
+) -> tuple[str, dict]:
     STAGING.mkdir(parents=True, exist_ok=True)
     filename = f"{uid()}.jsonl"
     path = STAGING / filename
-    summary: dict = {"total": 0, "accepted": 0, "rejected": 0, "errors": [], "duplicates": 0, "redacted_records": 0, "time_start": None, "time_end": None, "parser": source.parser}
+    summary: dict = {
+        "total": 0,
+        "accepted": 0,
+        "rejected": 0,
+        "errors": [],
+        "duplicates": 0,
+        "redacted_records": 0,
+        "time_start": None,
+        "time_end": None,
+        "parser": source.parser,
+    }
     try:
         with path.open("w", encoding="utf-8") as target:
             for number, record in enumerate(records, 1):
                 if number > 100000:
                     raise HTTPException(413, "Imports are limited to 100,000 records")
-                envelope = prepared_record(record, source.parser, policy.get("masks", []), policy.get("privacy_mode", True))
+                envelope = prepared_record(
+                    record, source.parser, policy.get("masks", []), policy.get("privacy_mode", True)
+                )
                 envelope["line"] = number
                 summary["total"] += 1
                 if "error" in envelope:
@@ -55,7 +72,13 @@ def stage_records(records, source: Source, policy: dict, allow_partial: bool = T
         if not summary["total"]:
             raise HTTPException(422, "The file contains no records")
         if summary["rejected"] and not allow_partial:
-            raise HTTPException(422, {"message": "Import validation failed. No events were imported. Enable partial import to accept valid rows.", "errors": summary["errors"]})
+            raise HTTPException(
+                422,
+                {
+                    "message": "Import validation failed. No events were imported. Enable partial import to accept valid rows.",
+                    "errors": summary["errors"],
+                },
+            )
         return filename, summary
     except Exception:
         path.unlink(missing_ok=True)
@@ -69,7 +92,9 @@ def file_records(file, extension: str, mapping: dict):
             if not mapping.get("timestamp") or not mapping.get("message"):
                 raise HTTPException(422, "CSV requires timestamp and message column mappings")
             reader = csv.DictReader(text)
-            if not reader.fieldnames or any(value not in reader.fieldnames for value in mapping.values()):
+            if not reader.fieldnames or any(
+                value not in reader.fieldnames for value in mapping.values()
+            ):
                 raise HTTPException(422, "CSV mapping refers to missing columns")
             for row in reader:
                 yield {field: row.get(column, "") for field, column in mapping.items()}
@@ -96,13 +121,30 @@ def file_records(file, extension: str, mapping: dict):
         text.detach()
 
 
-def enqueue_ingestion(db: Session, source: Source, actor_id: str | None, filename: str, summary: dict, key: str | None = None) -> Job:
+def enqueue_ingestion(
+    db: Session,
+    source: Source,
+    actor_id: str | None,
+    filename: str,
+    summary: dict,
+    key: str | None = None,
+) -> Job:
     if key:
-        old = db.scalar(select(Job).where(Job.workspace_id == source.workspace_id, Job.idempotency_key == key))
+        old = db.scalar(
+            select(Job).where(Job.workspace_id == source.workspace_id, Job.idempotency_key == key)
+        )
         if old:
             (STAGING / filename).unlink(missing_ok=True)
             return old
-    job = Job(workspace_id=source.workspace_id, source_id=source.id, actor_id=actor_id, kind="ingestion", payload={"file": filename}, result=summary, idempotency_key=key)
+    job = Job(
+        workspace_id=source.workspace_id,
+        source_id=source.id,
+        actor_id=actor_id,
+        kind="ingestion",
+        payload={"file": filename},
+        result=summary,
+        idempotency_key=key,
+    )
     db.add(job)
     db.flush()
     return job
@@ -127,11 +169,24 @@ def ingest_job(db: Session, job: Job):
             envelope = json.loads(line)
             record = envelope.get("event")
             if not record:
-                record = {"timestamp": utcnow().isoformat(), "message": "Record could not be parsed; original content discarded", "event_type": "parser_failure", "category": "ingestion", "severity": "medium", "parser_name": source.parser}
+                record = {
+                    "timestamp": utcnow().isoformat(),
+                    "message": "Record could not be parsed; original content discarded",
+                    "event_type": "parser_failure",
+                    "category": "ingestion",
+                    "severity": "medium",
+                    "parser_name": source.parser,
+                }
                 source.last_error_at = utcnow()
             timestamp = parse_timestamp(record.pop("timestamp"))
             bucket = int(timestamp.timestamp()) // window
-            existing = db.scalar(select(Event).where(Event.source_id == source.id, Event.fingerprint == envelope["fingerprint"], Event.dedup_bucket == bucket))
+            existing = db.scalar(
+                select(Event).where(
+                    Event.source_id == source.id,
+                    Event.fingerprint == envelope["fingerprint"],
+                    Event.dedup_bucket == bucket,
+                )
+            )
             if existing:
                 existing.duplicates += 1
                 result["duplicates"] = result.get("duplicates", 0) + 1
@@ -139,7 +194,18 @@ def ingest_job(db: Session, job: Job):
                 details = record.pop("details", {})
                 details["line_number"] = envelope["line"]
                 details["job_id"] = job.id
-                db.add(Event(workspace_id=job.workspace_id, source_id=source.id, timestamp=timestamp, fingerprint=envelope["fingerprint"], dedup_bucket=bucket, details=details, parse_status="failed" if "error" in envelope else "parsed", **record))
+                db.add(
+                    Event(
+                        workspace_id=job.workspace_id,
+                        source_id=source.id,
+                        timestamp=timestamp,
+                        fingerprint=envelope["fingerprint"],
+                        dedup_bucket=bucket,
+                        details=details,
+                        parse_status="failed" if "error" in envelope else "parsed",
+                        **record,
+                    )
+                )
             source.last_event_at = utcnow()
             if "error" not in envelope:
                 source.last_parse_at = utcnow()
@@ -148,10 +214,12 @@ def ingest_job(db: Session, job: Job):
             job.progress = min(99, int(index / max(result["total"], 1) * 100))
             if index % 250 == 0:
                 from datetime import timedelta
+
                 job.lease_until = utcnow() + timedelta(minutes=10)
                 db.commit()
     db.flush()
     # Detection is in the same transaction as completion, making retries safe.
     from app.detection import run_detection
+
     result["alerts_created"] = run_detection(db, job.workspace_id, source_id=source.id)
     job.result = result

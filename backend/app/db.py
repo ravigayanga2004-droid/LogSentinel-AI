@@ -24,14 +24,19 @@ def make_engine(url: str):
     if url.startswith("sqlite") and ":memory:" not in url:
         Path("data").mkdir(exist_ok=True)
     engine = create_engine(
-        url, pool_pre_ping=True,
-        connect_args={"check_same_thread": False, "timeout": 30} if url.startswith("sqlite") else {"options": "-c statement_timeout=30000"},
+        url,
+        pool_pre_ping=True,
+        connect_args={"check_same_thread": False, "timeout": 30}
+        if url.startswith("sqlite")
+        else {"options": "-c statement_timeout=30000"},
     )
     if url.startswith("sqlite"):
+
         @event.listens_for(engine, "connect")
         def pragmas(connection, _):
             connection.execute("PRAGMA foreign_keys=ON")
             connection.execute("PRAGMA journal_mode=WAL")
+
     return engine
 
 
