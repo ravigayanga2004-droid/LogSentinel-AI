@@ -191,14 +191,17 @@ def reset(data: ResetInput, db: Session = Depends(get_db)):
     if not entry or entry.used or is_expired(entry.expires_at):
         raise HTTPException(400, "Reset link is invalid or expired")
     # Atomic consume prevents concurrent token reuse.
-    changed = db.execute(
+    changed = db.scalar(
         update(ResetToken)
         .where(ResetToken.id == entry.id, ResetToken.used.is_(False))
         .values(used=True)
+        .returning(ResetToken.id)
     )
-    if not changed.rowcount:
+    if not changed:
         raise HTTPException(400, "Reset link is invalid or expired")
     user = db.get(User, entry.user_id)
+    if not user:
+        raise HTTPException(400, "Account is unavailable")
     user.password_hash = hash_password(data.password)
     db.execute(delete(AuthSession).where(AuthSession.user_id == user.id))
     for member in db.scalars(select(Member).where(Member.user_id == user.id)):

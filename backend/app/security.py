@@ -82,10 +82,16 @@ def rate_limit(db: Session, key: str, limit: int, seconds: int):
             pass
     db.execute(
         update(RateBucket)
+        .execution_options(synchronize_session=False)
         .where(RateBucket.key == key, RateBucket.expires_at <= now)
         .values(count=0, expires_at=now + timedelta(seconds=seconds))
     )
-    db.execute(update(RateBucket).where(RateBucket.key == key).values(count=RateBucket.count + 1))
+    db.execute(
+        update(RateBucket)
+        .execution_options(synchronize_session=False)
+        .where(RateBucket.key == key)
+        .values(count=RateBucket.count + 1)
+    )
     count = db.scalar(select(RateBucket.count).where(RateBucket.key == key)) or 0
     # Persist failed attempts even when the route returns an authentication error.
     db.commit()

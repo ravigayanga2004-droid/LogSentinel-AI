@@ -132,6 +132,7 @@ class NameInput(Input):
 
 
 class PolicyInput(Input):
+    auto_retention: bool = False
     event_retention_days: int = Field(default=30, ge=1, le=3650)
     alert_retention_days: int = Field(default=180, ge=1, le=3650)
     audit_retention_days: int = Field(default=365, ge=30, le=3650)
