@@ -8,18 +8,24 @@ def main():
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("seed")
     sub.add_parser("worker")
-    reset = sub.add_parser("reset-link", help="Create an expiring recovery link for a verified local account")
+    reset = sub.add_parser(
+        "reset-link", help="Create an expiring recovery link for a verified local account"
+    )
     reset.add_argument("email")
-    member = sub.add_parser("grant-member", help="Grant membership after verifying identity out of band")
+    member = sub.add_parser(
+        "grant-member", help="Grant membership after verifying identity out of band"
+    )
     member.add_argument("email")
     member.add_argument("workspace_id")
     member.add_argument("role", choices=["administrator", "analyst", "viewer", "source_admin"])
     args = parser.parse_args()
     if args.command == "seed":
         from app.seed import seed
+
         print(seed())
     elif args.command == "worker":
         from app.worker import main as work
+
         work()
     else:
         from app.auth import create_reset
@@ -27,6 +33,7 @@ def main():
         from app.config import get_settings
         from app.db import SessionLocal
         from app.models import Member, User, Workspace
+
         with SessionLocal() as db:
             user = db.scalar(select(User).where(User.email == args.email.lower()))
             if not user:
@@ -43,7 +50,15 @@ def main():
                 if existing:
                     parser.error("Membership already exists; change its role in the application")
                 db.add(Member(workspace_id=workspace.id, user_id=user.id, role=args.role))
-                create_audit_log(db, workspace.id, None, "member.cli_granted", "user", user.id, {"role": args.role})
+                create_audit_log(
+                    db,
+                    workspace.id,
+                    None,
+                    "member.cli_granted",
+                    "user",
+                    user.id,
+                    {"role": args.role},
+                )
                 db.commit()
                 print("Membership granted.")
 
