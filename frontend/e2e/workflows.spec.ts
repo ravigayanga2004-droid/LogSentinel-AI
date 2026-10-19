@@ -2,7 +2,7 @@ import { test, expect, type Page } from '@playwright/test';
 
 async function login(page: Page, role = 'admin') {
   await page.goto('/login');
-  await page.getByLabel('Email address').fill(`${role}@logsentinel.local`);
+  await page.getByLabel('Email address').fill(`${role}@logsentinel.example.com`);
   await page.getByLabel('Password', { exact: true }).fill('Sentinel-Demo-2026!');
   await page.getByRole('button', { name: 'Sign in to workspace' }).click();
   await expect(page.getByRole('heading', { name: 'Security overview' })).toBeVisible();
