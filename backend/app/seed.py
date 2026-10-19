@@ -21,7 +21,13 @@ def seed():
         raise ValueError("Demo data cannot be installed in production")
     rng = random.Random(42)
     with SessionLocal() as db:
-        if db.scalar(select(User).where(User.email == "admin@logsentinel.local")):
+        # Repair the initial development-only fixture domain without changing its data.
+        for name in ("admin", "analyst", "viewer", "source"):
+            legacy = db.scalar(select(User).where(User.email == f"{name}@logsentinel.local"))
+            if legacy:
+                legacy.email = f"{name}@logsentinel.example.com"
+        db.commit()
+        if db.scalar(select(User).where(User.email == "admin@logsentinel.example.com")):
             return "Demo already exists; no existing data changed."
         workspace = Workspace(name="Acme Security · Demo", settings={"privacy_mode": True})
         db.add(workspace)
@@ -35,7 +41,7 @@ def seed():
         ]:
             user = User(
                 name=name,
-                email=f"{email}@logsentinel.local",
+                email=f"{email}@logsentinel.example.com",
                 password_hash=hash_password(DEMO_PASSWORD),
             )
             db.add(user)

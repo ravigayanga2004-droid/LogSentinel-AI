@@ -120,6 +120,22 @@ def run_once() -> bool:
 def maintenance():
     with SessionLocal() as db:
         now = utcnow()
+        stranded = list(
+            db.scalars(
+                select(Job).where(Job.status == "running", Job.lease_until < now, Job.attempts >= 3)
+            )
+        )
+        for job in stranded:
+            job.status = "failed"
+            job.error = "Worker lease expired after the final attempt. Review and retry the job."
+            db.add(
+                Notification(
+                    workspace_id=job.workspace_id,
+                    user_id=job.actor_id,
+                    title="A job exhausted its worker recovery attempts",
+                    link="/sources",
+                )
+            )
         db.execute(delete(AuthSession).where(AuthSession.expires_at < now))
         db.execute(delete(ResetToken).where(ResetToken.expires_at < now))
         db.execute(delete(RateBucket).where(RateBucket.expires_at < now))
@@ -127,6 +143,21 @@ def maintenance():
             delete(WorkerHeartbeat).where(WorkerHeartbeat.last_seen < now - timedelta(days=1))
         )
         for workspace in db.scalars(select(Workspace)):
+            # Periodic evaluation detects silent sources even when no new events arrive.
+            detect_key = f"scheduled-detection:{now.strftime('%Y-%m-%dT%H:%M')}"
+            if not db.scalar(
+                select(Job.id).where(
+                    Job.workspace_id == workspace.id, Job.idempotency_key == detect_key
+                )
+            ):
+                db.add(
+                    Job(
+                        workspace_id=workspace.id,
+                        kind="detection",
+                        payload={},
+                        idempotency_key=detect_key,
+                    )
+                )
             if workspace.settings.get("auto_retention", False):
                 key = f"retention:{now.date().isoformat()}"
                 existing = db.scalar(

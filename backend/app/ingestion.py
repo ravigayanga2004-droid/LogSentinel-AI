@@ -97,7 +97,10 @@ def file_records(file, extension: str, mapping: dict):
             ):
                 raise HTTPException(422, "CSV mapping refers to missing columns")
             for row in reader:
-                yield {field: row.get(column, "") for field, column in mapping.items()}
+                mapped = {field: row.get(column, "") for field, column in mapping.items()}
+                if not str(mapped.get("timestamp", "")).strip():
+                    mapped["timestamp"] = "INVALID_CSV_TIMESTAMP"
+                yield mapped
         elif extension == ".json":
             value = json.load(text)
             if isinstance(value, dict):
@@ -162,61 +165,66 @@ def ingest_job(db: Session, job: Job):
     window = (workspace.settings or {}).get("duplicate_window_minutes", 60) * 60
     result = dict(job.result)
     cursor = int(result.get("cursor", 0))
+    from datetime import timedelta
+    from itertools import islice
+
     with (STAGING / filename).open(encoding="utf-8") as stream:
-        for index, line in enumerate(stream, 1):
-            if index <= cursor:
-                continue
-            envelope = json.loads(line)
-            record = envelope.get("event")
-            if not record:
-                record = {
-                    "timestamp": utcnow().isoformat(),
-                    "message": "Record could not be parsed; original content discarded",
-                    "event_type": "parser_failure",
-                    "category": "ingestion",
-                    "severity": "medium",
-                    "parser_name": source.parser,
-                }
-                source.last_error_at = utcnow()
-            timestamp = parse_timestamp(record.pop("timestamp"))
-            bucket = int(timestamp.timestamp()) // window
-            existing = db.scalar(
+        for _ in range(cursor):
+            next(stream, None)
+        while lines := list(islice(stream, 250)):
+            envelopes = [json.loads(line) for line in lines]
+            fingerprints = [item["fingerprint"] for item in envelopes]
+            existing_rows = db.scalars(
                 select(Event).where(
-                    Event.source_id == source.id,
-                    Event.fingerprint == envelope["fingerprint"],
-                    Event.dedup_bucket == bucket,
+                    Event.source_id == source.id, Event.fingerprint.in_(fingerprints)
                 )
             )
-            if existing:
-                existing.duplicates += 1
-                result["duplicates"] = result.get("duplicates", 0) + 1
-            else:
-                details = record.pop("details", {})
-                details["line_number"] = envelope["line"]
-                details["job_id"] = job.id
-                db.add(
-                    Event(
-                        workspace_id=job.workspace_id,
-                        source_id=source.id,
-                        timestamp=timestamp,
-                        fingerprint=envelope["fingerprint"],
-                        dedup_bucket=bucket,
-                        details=details,
-                        parse_status="failed" if "error" in envelope else "parsed",
-                        **record,
-                    )
-                )
-            source.last_event_at = utcnow()
-            if "error" not in envelope:
-                source.last_parse_at = utcnow()
-            result["cursor"] = index
+            known = {(row.fingerprint, row.dedup_bucket): row for row in existing_rows}
+            with db.no_autoflush:
+                for envelope in envelopes:
+                    record = envelope.get("event")
+                    if not record:
+                        record = {
+                            "timestamp": utcnow().isoformat(),
+                            "message": "Record could not be parsed; original content discarded",
+                            "event_type": "parser_failure",
+                            "category": "ingestion",
+                            "severity": "medium",
+                            "parser_name": source.parser,
+                        }
+                        source.last_error_at = utcnow()
+                    timestamp = parse_timestamp(record.pop("timestamp"))
+                    bucket = int(timestamp.timestamp()) // window
+                    key = (envelope["fingerprint"], bucket)
+                    if key in known:
+                        existing = known[key]
+                        existing.duplicates = (existing.duplicates or 0) + 1
+                        result["duplicates"] = result.get("duplicates", 0) + 1
+                    else:
+                        details = record.pop("details", {})
+                        details.update(line_number=envelope["line"], job_id=job.id)
+                        row = Event(
+                            workspace_id=job.workspace_id,
+                            source_id=source.id,
+                            timestamp=timestamp,
+                            fingerprint=envelope["fingerprint"],
+                            dedup_bucket=bucket,
+                            details=details,
+                            duplicates=0,
+                            parse_status="failed" if "error" in envelope else "parsed",
+                            **record,
+                        )
+                        known[key] = row
+                        db.add(row)
+                    source.last_event_at = utcnow()
+                    if "error" not in envelope:
+                        source.last_parse_at = utcnow()
+                    cursor += 1
+            result["cursor"] = cursor
             job.result = dict(result)
-            job.progress = min(99, int(index / max(result["total"], 1) * 100))
-            if index % 250 == 0:
-                from datetime import timedelta
-
-                job.lease_until = utcnow() + timedelta(minutes=10)
-                db.commit()
+            job.progress = min(99, int(cursor / max(result["total"], 1) * 100))
+            job.lease_until = utcnow() + timedelta(minutes=10)
+            db.commit()
     db.flush()
     # Detection is in the same transaction as completion, making retries safe.
     from app.detection import run_detection

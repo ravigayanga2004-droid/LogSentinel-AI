@@ -25,26 +25,22 @@ describe('API transport', () => {
   it('surfaces safe validation errors', async () => {
     vi.stubGlobal(
       'fetch',
-      vi
-        .fn()
-        .mockResolvedValue({
-          ok: false,
-          status: 422,
-          json: async () => ({ detail: [{ field: 'body.name', message: 'Required' }] }),
-        }),
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 422,
+        json: async () => ({ detail: [{ field: 'body.name', message: 'Required' }] }),
+      }),
     );
     await expect(api('/sources')).rejects.toThrow('body.name: Required');
   });
   it('identifies expired authentication', async () => {
     vi.stubGlobal(
       'fetch',
-      vi
-        .fn()
-        .mockResolvedValue({
-          ok: false,
-          status: 401,
-          json: async () => ({ detail: 'Please sign in' }),
-        }),
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 401,
+        json: async () => ({ detail: 'Please sign in' }),
+      }),
     );
     await expect(api('/auth/me')).rejects.toBeInstanceOf(ApiError);
   });

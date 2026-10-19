@@ -34,6 +34,8 @@ def parse_timestamp(value: Any) -> datetime:
         result = datetime.fromtimestamp(value / 1000 if value > 1e11 else value, UTC)
     else:
         text = str(value).strip()
+        if text.isdigit() and len(text) in {10, 13}:
+            return parse_timestamp(int(text))
         try:
             result = datetime.fromisoformat(text.replace("Z", "+00:00"))
         except ValueError:
@@ -86,6 +88,7 @@ def normalize(obj: dict, parser: str) -> dict:
         "status_code": code,
         "username": str(obj.get("username", obj.get("user", "")))[:200],
         "source_ip": str(obj.get("source_ip", obj.get("ip", obj.get("remote_addr", ""))))[:100],
+        "destination_ip": str(obj.get("destination_ip", ""))[:100],
         "source_host": str(obj.get("host", obj.get("source_host", "")))[:100],
         "service": str(obj.get("service", obj.get("application", "")))[:100],
         "url_path": str(obj.get("url_path", obj.get("path", "")))[:2000],
@@ -93,6 +96,12 @@ def normalize(obj: dict, parser: str) -> dict:
         "outcome": str(obj.get("outcome", "failure" if code and code >= 400 else "unknown"))[:30],
         "parser_name": parser,
         "details": {
+            "application": str(obj.get("application", ""))[:100],
+            "destination_port": str(obj.get("destination_port", ""))[:8],
+            "action": str(obj.get("action", ""))[:100],
+            "process_id": str(obj.get("process_id", ""))[:30],
+            "user_agent": str(obj.get("user_agent", ""))[:500],
+            "windows_event_id": str(obj.get("EventID", ""))[:30],
             "metadata": obj.get("metadata", {}),
             "request_id": str(obj.get("request_id", ""))[:100],
             "process": str(obj.get("process", ""))[:100],

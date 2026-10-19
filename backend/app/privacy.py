@@ -64,13 +64,18 @@ def safe_cell(value: Any) -> str:
 def redact_event(parsed: dict, masks: list[str] | None = None, privacy: bool = True) -> dict:
     original = dict(parsed)
     cleaned = redact_sensitive_fields(parsed, privacy, masks)
-    cleaned["username_hash"] = entity_hash(str(original.get("username", "")))
-    cleaned["source_ip_hash"] = entity_hash(str(original.get("source_ip", "")))
     cleaned.pop("username", None)
     cleaned.pop("source_ip", None)
+    cleaned.pop("destination_ip", None)
     cleaned["url_path"] = safe_path(str(original.get("url_path", "")))
     # Structured user names may also appear embedded in a human readable message.
     username = str(original.get("username", ""))
     if username and len(username) >= 2:
         cleaned = redact_sensitive_fields(cleaned, privacy, [*(masks or []), username])
+    # Add correlation hashes after literal masking: a short username may occur inside a digest.
+    cleaned["username_hash"] = entity_hash(str(original.get("username", "")))
+    cleaned["source_ip_hash"] = entity_hash(str(original.get("source_ip", "")))
+    cleaned.setdefault("details", {})["destination_ip_hash"] = entity_hash(
+        str(original.get("destination_ip", ""))
+    )
     return cleaned

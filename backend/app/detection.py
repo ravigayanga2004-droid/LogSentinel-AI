@@ -133,7 +133,11 @@ def evaluate_rule(db: Session, rule: Rule, source: Source, now=None) -> list[dic
             )
             or 0
         )
-        result = anomaly(value, stats_row.stats)
+        stats = {
+            **stats_row.stats,
+            "threshold": max(rule.threshold, stats_row.stats.get("threshold", rule.threshold)),
+        }
+        result = anomaly(value, stats)
         return (
             [
                 {
@@ -172,11 +176,17 @@ def evaluate_rule(db: Session, rule: Rule, source: Source, now=None) -> list[dic
         .order_by(Event.timestamp, Event.id)
     )
     for event in db.scalars(query.execution_options(yield_per=500)):
+        if rule.kind == "many_sources" and not event.username_hash:
+            continue
+        if rule.kind == "many_users" and (not event.username_hash or not event.source_ip_hash):
+            continue
+        if rule.kind == "new_entity" and not getattr(event, rule.group_by):
+            continue
         if not matches(event, rule.kind, rule.config):
             continue
         group_key = getattr(event, rule.group_by) or source.id
         group = groups[group_key]
-        group["observed"] += 1
+        group["observed"] += 1 + event.duplicates if rule.kind == "parser_failure" else 1
         if len(group["events"]) < 100:
             group["events"].append(event.id)
         if event.username_hash:
@@ -238,8 +248,18 @@ def update_baselines(db: Session, wid: str, source_id: str | None = None):
     if source_id:
         sources = sources.where(Source.id == source_id)
     for source in db.scalars(sources):
+        row = db.scalar(
+            select(Baseline).where(
+                Baseline.source_id == source.id, Baseline.feature == "events_per_5m"
+            )
+        )
         # Exclude the active five-minute window to avoid training on the anomaly being tested.
         start = now - timedelta(hours=24)
+        reset_at = row.stats.get("reset_at") if row else None
+        if reset_at:
+            from app.parsers import parse_timestamp
+
+            start = max(start, parse_timestamp(reset_at))
         end = now - timedelta(minutes=5)
         counts: dict[int, float] = defaultdict(float)
         first = None
@@ -254,6 +274,8 @@ def update_baselines(db: Session, wid: str, source_id: str | None = None):
         last = int(end.timestamp()) // 300
         values = [counts[bucket] for bucket in range(first, last)] if first is not None else []
         stats = baseline(values)
+        if reset_at:
+            stats["reset_at"] = reset_at
         row = db.scalar(
             select(Baseline).where(
                 Baseline.source_id == source.id, Baseline.feature == "events_per_5m"

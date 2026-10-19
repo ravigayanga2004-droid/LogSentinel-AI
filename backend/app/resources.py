@@ -70,7 +70,11 @@ def source_health(db, source):
             ).where(Event.source_id == source.id)
         )
         if db.bind.dialect.name == "sqlite"
-        else None
+        else db.scalar(
+            select(func.avg(func.extract("epoch", Event.received_at - Event.timestamp))).where(
+                Event.source_id == source.id
+            )
+        )
     )
     return {
         **serialize(source),
@@ -81,7 +85,9 @@ def source_health(db, source):
         "event_count": total,
         "parse_failures": failures,
         "events_per_minute": round(total / 1440, 2),
-        "average_latency_seconds": round(max(0, (latency or 0) * 86400), 2),
+        "average_latency_seconds": round(
+            max(0, (latency or 0) * (86400 if db.get_bind().dialect.name == "sqlite" else 1)), 2
+        ),
     }
 
 
@@ -290,6 +296,10 @@ def event_query(wid: str, filters: dict):
     }
     if set(filters) - allowed:
         raise HTTPException(422, "Unknown event filter")
+    if any(
+        not isinstance(value, (str, int, float, bool, type(None))) for value in filters.values()
+    ):
+        raise HTTPException(422, "Event filters must be scalar values")
     for key in allowed - {"q", "start", "end", "anomaly", "hours"}:
         if filters.get(key) not in {None, ""}:
             query = query.where(getattr(Event, key) == filters[key])
