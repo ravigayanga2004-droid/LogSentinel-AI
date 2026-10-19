@@ -17,7 +17,14 @@ export function useAuth() {
 export function useSession() {
   return useQuery({
     queryKey: ['session'],
-    queryFn: () => api<User>('/auth/me'),
+    queryFn: async () => {
+      const user = await api<User>('/auth/me');
+      // Select an authorized workspace before child queries read request headers.
+      if (!user.workspaces.some((item) => item.id === workspaceId()) && user.workspaces[0]) {
+        localStorage.setItem('ls_workspace', user.workspaces[0].id);
+      }
+      return user;
+    },
     retry: (count, error) => !(error instanceof ApiError && error.status === 401) && count < 1,
     staleTime: 60000,
   });

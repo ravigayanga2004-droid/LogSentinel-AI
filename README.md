@@ -2,6 +2,11 @@
 
 Private, explainable log anomaly detection for authorized defensive monitoring. A working FastAPI + React application with persistent events, secure workspace access, resumable ingestion, versioned detections, investigation workflows and a responsive light/dark console.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/dashboard-dark.png">
+  <img alt="LogSentinel dashboard with synthetic security events, explainable alerts and source health" src="docs/screenshots/dashboard-light.png">
+</picture>
+
 > An anomaly is an observation, not proof of malicious intent. Tune detection to your environment and verify evidence with the system owner. LogSentinel never scans targets, attacks systems, blocks IP addresses or disables accounts.
 
 ## What works

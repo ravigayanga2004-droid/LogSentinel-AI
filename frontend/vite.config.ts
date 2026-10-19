@@ -21,6 +21,8 @@ export default defineConfig({
   },
   preview: { port: 4173 },
   test: {
+    maxWorkers: 1,
+    fileParallelism: false,
     environment: 'jsdom',
     setupFiles: ['./src/test-setup.ts'],
     include: ['src/**/*.test.{ts,tsx}'],
