@@ -1,15 +1,26 @@
+import os
+import uuid
+
 import pytest
 from app.db import Base, get_db, make_engine
 from app.main import app
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.schema import CreateSchema, DropSchema
 
 
 @pytest.fixture
 def system(tmp_path, monkeypatch):
     from app import ingestion, worker
 
-    engine = make_engine(f"sqlite:///{tmp_path / 'test.db'}")
+    database_url = os.environ.get("TEST_DATABASE_URL", f"sqlite:///{tmp_path / 'test.db'}")
+    engine = make_engine(database_url)
+    schema = None
+    if database_url.startswith("postgresql"):
+        schema = "test_" + uuid.uuid4().hex
+        with engine.begin() as connection:
+            connection.execute(CreateSchema(schema))
+        engine = engine.execution_options(schema_translate_map={None: schema})
     Base.metadata.create_all(engine)
     factory = sessionmaker(engine, expire_on_commit=False)
 
@@ -39,6 +50,9 @@ def system(tmp_path, monkeypatch):
         client.headers["x-csrf-token"] = client.cookies["ls_csrf"]
         yield client, factory, worker
     app.dependency_overrides.clear()
+    if schema:
+        with engine.begin() as connection:
+            connection.execute(DropSchema(schema, cascade=True))
     engine.dispose()
 
 

@@ -172,6 +172,12 @@ def evaluate_rule(db: Session, rule: Rule, source: Source, now=None) -> list[dic
         .order_by(Event.timestamp, Event.id)
     )
     for event in db.scalars(query.execution_options(yield_per=500)):
+        if rule.kind == "many_sources" and not event.username_hash:
+            continue
+        if rule.kind == "many_users" and (not event.username_hash or not event.source_ip_hash):
+            continue
+        if rule.kind == "new_entity" and not getattr(event, rule.group_by):
+            continue
         if not matches(event, rule.kind, rule.config):
             continue
         group_key = getattr(event, rule.group_by) or source.id
