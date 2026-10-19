@@ -171,7 +171,16 @@ def analytics(
         "total_events": total,
         "events_per_minute": round(total / (hours * 60), 2),
         "open_alerts": sum(count for status, count in alert_counts.items() if status not in CLOSED),
-        "high_alerts": severity_counts.get("high", 0) + severity_counts.get("critical", 0),
+        "high_alerts": ctx.db.scalar(
+            select(func.count())
+            .select_from(Alert)
+            .where(
+                *alert_conditions,
+                Alert.severity.in_(["high", "critical"]),
+                Alert.status.not_in(CLOSED),
+            )
+        )
+        or 0,
         "anomalies": anomalies,
         "error_rate": round(errors / max(total, 1) * 100, 2),
         "parse_failure_rate": round(failures / max(total, 1) * 100, 2),

@@ -86,7 +86,8 @@ def source_health(db, source):
         "parse_failures": failures,
         "events_per_minute": round(total / 1440, 2),
         "average_latency_seconds": round(
-            max(0, float(latency or 0) * (86400 if db.get_bind().dialect.name == "sqlite" else 1)), 2
+            max(0, float(latency or 0) * (86400 if db.get_bind().dialect.name == "sqlite" else 1)),
+            2,
         ),
     }
 

@@ -1477,6 +1477,10 @@ textarea {
   }
 }
 @media (max-width: 760px) {
+  .toolbar > .filter-control:not(.search) {
+    flex: 1 1 calc(50% - 8px);
+    min-width: 140px;
+  }
   .sidebar {
     transform: translateX(-100%);
     width: 236px;

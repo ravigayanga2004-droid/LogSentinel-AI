@@ -51,6 +51,8 @@ def main():
         for _ in watch(ROOT / "backend"):
             subprocess.run([interpreter, "-m", "pytest", *sys.argv[2:]], cwd=ROOT, check=False)
         return
+    if name in {"--help", "-h"}:
+        name = "help"
     if name not in commands:
         print(
             "Usage: python scripts/manage.py COMMAND [arguments]\nCommands: "
