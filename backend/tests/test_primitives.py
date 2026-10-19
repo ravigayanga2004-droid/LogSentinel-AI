@@ -28,7 +28,9 @@ def test_entity_hash():
 
 
 def test_short_usernames_do_not_corrupt_correlation_hashes():
-    event = redact_event(parse_line('{"message":"user ab signed in","username":"ab","ip":"192.0.2.1"}'))
+    event = redact_event(
+        parse_line('{"message":"user ab signed in","username":"ab","ip":"192.0.2.1"}')
+    )
     assert event["username_hash"] == entity_hash("ab")
     assert event["source_ip_hash"] == entity_hash("192.0.2.1")
     assert "user ab" not in event["message"]

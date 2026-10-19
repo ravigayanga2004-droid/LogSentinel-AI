@@ -70,7 +70,11 @@ def source_health(db, source):
             ).where(Event.source_id == source.id)
         )
         if db.bind.dialect.name == "sqlite"
-        else db.scalar(select(func.avg(func.extract("epoch", Event.received_at - Event.timestamp))).where(Event.source_id == source.id))
+        else db.scalar(
+            select(func.avg(func.extract("epoch", Event.received_at - Event.timestamp))).where(
+                Event.source_id == source.id
+            )
+        )
     )
     return {
         **serialize(source),
@@ -81,7 +85,9 @@ def source_health(db, source):
         "event_count": total,
         "parse_failures": failures,
         "events_per_minute": round(total / 1440, 2),
-        "average_latency_seconds": round(max(0, (latency or 0) * (86400 if db.get_bind().dialect.name == "sqlite" else 1)), 2),
+        "average_latency_seconds": round(
+            max(0, (latency or 0) * (86400 if db.get_bind().dialect.name == "sqlite" else 1)), 2
+        ),
     }
 
 

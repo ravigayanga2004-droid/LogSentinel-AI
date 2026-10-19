@@ -133,7 +133,11 @@ def evaluate_rule(db: Session, rule: Rule, source: Source, now=None) -> list[dic
             )
             or 0
         )
-        result = anomaly(value, stats_row.stats)
+        stats = {
+            **stats_row.stats,
+            "threshold": max(rule.threshold, stats_row.stats.get("threshold", rule.threshold)),
+        }
+        result = anomaly(value, stats)
         return (
             [
                 {
