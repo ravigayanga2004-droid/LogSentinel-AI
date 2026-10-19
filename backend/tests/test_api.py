@@ -109,6 +109,7 @@ def test_ingest_detect_investigate_export(system, source):
     assert "top-secret" not in downloaded.text
     assert len(downloaded.json()["events"]) == 8
     assert client.get("/api/analytics").json()["total_events"] == 8
+    assert client.get("/api/analytics").json()["high_alerts"] == 0
 
 
 def test_idempotency_and_dedup(system, source):

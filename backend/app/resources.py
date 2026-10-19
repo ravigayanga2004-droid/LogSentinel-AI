@@ -86,7 +86,8 @@ def source_health(db, source):
         "parse_failures": failures,
         "events_per_minute": round(total / 1440, 2),
         "average_latency_seconds": round(
-            max(0, (latency or 0) * (86400 if db.get_bind().dialect.name == "sqlite" else 1)), 2
+            max(0, float(latency or 0) * (86400 if db.get_bind().dialect.name == "sqlite" else 1)),
+            2,
         ),
     }
 
@@ -391,6 +392,9 @@ def event_detail(event_id: str, ctx: Context = Depends(require_workspace_access)
             or_(
                 Event.source_ip_hash == event.source_ip_hash if event.source_ip_hash else false(),
                 Event.username_hash == event.username_hash if event.username_hash else false(),
+                Event.details["request_id"].as_string() == event.details.get("request_id")
+                if event.details.get("request_id")
+                else false(),
             ),
         )
         .order_by(Event.timestamp)

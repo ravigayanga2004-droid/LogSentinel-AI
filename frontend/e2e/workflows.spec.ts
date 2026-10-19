@@ -11,6 +11,8 @@ async function login(page: Page, role = 'admin') {
 test('dashboard supports both themes, responsive navigation and all main routes', async ({
   page,
 }) => {
+  // Thirteen full route visits, theme persistence and a second viewport share this test.
+  test.setTimeout(120000);
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await login(page);

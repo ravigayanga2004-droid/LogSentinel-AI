@@ -95,6 +95,19 @@ def test_worker_recovers_expired_lease_once(system, source):
     assert status["status"] == "completed"
     assert status["attempts"] == 2
     assert not worker.run_once()
+    with factory() as db:
+        db.add(
+            Job(
+                workspace_id=source["workspace_id"],
+                kind="detection",
+                status="running",
+                lease_until=utcnow() + timedelta(minutes=10),
+                attempts=1,
+                payload={},
+            )
+        )
+        db.commit()
+    assert not worker.run_once(), "A worker must not steal an active lease, including a demo import"
 
 
 def test_ingestion_retry_does_not_increment_duplicates(system, source):

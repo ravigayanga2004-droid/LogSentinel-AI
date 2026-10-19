@@ -193,8 +193,8 @@ def ingest_batch(data: BatchInput, x_api_key: str = Header(""), db: Session = De
     create_audit_log(db, key.workspace_id, None, "ingestion.api_queued", "job", job.id)
     return {
         **serialize(job),
-        "accepted": summary["accepted"],
-        "rejected": summary["rejected"],
-        "duplicates": summary["duplicates"],
+        "accepted": job.result["accepted"],
+        "rejected": job.result["rejected"],
+        "duplicates": job.result["duplicates"],
         "message": "Accepted for asynchronous processing; final duplicate counts are in job status.",
     }

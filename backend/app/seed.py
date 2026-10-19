@@ -167,6 +167,12 @@ def seed():
                     )
             filename, summary = stage_records(iter(records), source, workspace.settings)
             job = enqueue_ingestion(db, source, users[0].id, filename, summary)
+            # Seeding processes its own jobs; a live worker must not claim them mid-import.
+            job.status, job.attempts, job.lease_until = (
+                "running",
+                1,
+                utcnow() + timedelta(minutes=10),
+            )
             ingest_job(db, job)
             job.status, job.progress = "completed", 100
             db.commit()
@@ -175,6 +181,7 @@ def seed():
             iter(["{malformed-json"] * 4), sources[2], workspace.settings
         )
         job = enqueue_ingestion(db, sources[2], users[0].id, filename, summary)
+        job.status, job.attempts, job.lease_until = "running", 1, utcnow() + timedelta(minutes=10)
         ingest_job(db, job)
         job.status, job.progress = "completed", 100
         alert = db.scalar(select(Alert).where(Alert.workspace_id == workspace.id))

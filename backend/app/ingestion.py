@@ -1,6 +1,7 @@
 import csv
 import io
 import json
+import os
 from pathlib import Path
 
 from fastapi import HTTPException
@@ -34,7 +35,7 @@ def prepared_record(line: str | dict, parser: str, masks: list[str], privacy: bo
 def stage_records(
     records, source: Source, policy: dict, allow_partial: bool = True
 ) -> tuple[str, dict]:
-    STAGING.mkdir(parents=True, exist_ok=True)
+    STAGING.mkdir(mode=0o700, parents=True, exist_ok=True)
     filename = f"{uid()}.jsonl"
     path = STAGING / filename
     summary: dict = {
@@ -49,7 +50,8 @@ def stage_records(
         "parser": source.parser,
     }
     try:
-        with path.open("w", encoding="utf-8") as target:
+        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as target:
             for number, record in enumerate(records, 1):
                 if number > 100000:
                     raise HTTPException(413, "Imports are limited to 100,000 records")
@@ -194,6 +196,8 @@ def ingest_job(db: Session, job: Job):
                         }
                         source.last_error_at = utcnow()
                     timestamp = parse_timestamp(record.pop("timestamp"))
+                    if not record.get("source_host"):
+                        record["source_host"] = source.host
                     bucket = int(timestamp.timestamp()) // window
                     key = (envelope["fingerprint"], bucket)
                     if key in known:

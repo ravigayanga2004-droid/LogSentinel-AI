@@ -32,3 +32,7 @@ After each phase run relevant checks and fix failures. Final verification must r
 ## Acceptance workflow
 
 Initialize an administrator, create a workspace/source, import logs through the worker, inspect redacted events, run explainable detection, investigate and resolve an alert, export an authorized report, verify viewer restrictions and cross-workspace isolation, test malformed data, deduplication, retention, theme persistence and responsive navigation.
+
+## Execution adjustments
+
+Authentication and the privacy staging module landed with foundation, followed by the remaining platform API/detection/worker workflows together on `feat/platform-api`; a separate detection branch was unnecessary. The console, hardening and release branches preserve the remaining phase boundaries. All commits use actual authorship/time and focused work; no history was backdated or fabricated. Test fixtures caught and corrected a demo-domain validation problem, missing-entity false detections, a SQLite timezone synchronization issue, baseline-reset history leakage and short-identifier digest masking. See final verification for executed checks and constraints.

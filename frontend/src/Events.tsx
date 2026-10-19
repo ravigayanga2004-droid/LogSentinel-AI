@@ -16,6 +16,7 @@ import { api } from './api';
 import { useAction, useAuth, useCan } from './context';
 import {
   Badge,
+  Confirm,
   Dialog,
   Empty,
   ErrorState,
@@ -41,6 +42,7 @@ export function Events() {
   const [expanded, setExpanded] = useState('');
   const [save, setSave] = useState(false);
   const [advanced, setAdvanced] = useState(false);
+  const [deleteSearch, setDeleteSearch] = useState('');
   const action = useAction();
   const canExport = useCan('export');
   const navigate = useNavigate();
@@ -208,12 +210,7 @@ export function Events() {
               <button
                 className="icon-button"
                 aria-label={`Delete saved search ${row.name}`}
-                onClick={() =>
-                  action.run(
-                    () => api(`/saved-searches/${row.id}`, 'DELETE'),
-                    'Saved search removed',
-                  )
-                }
+                onClick={() => setDeleteSearch(row.id)}
               >
                 <Trash2 size={14} />
               </button>
@@ -289,6 +286,21 @@ export function Events() {
             </button>
           </div>
         </Dialog>
+      )}
+      {deleteSearch && (
+        <Confirm
+          title="Delete this saved search?"
+          description="The saved filter configuration will be removed from your account. Event evidence remains available."
+          busy={action.busy}
+          onClose={() => setDeleteSearch('')}
+          onConfirm={async () => {
+            const result = await action.run(
+              () => api(`/saved-searches/${deleteSearch}`, 'DELETE'),
+              'Saved search removed',
+            );
+            if (result) setDeleteSearch('');
+          }}
+        />
       )}
       <Panel
         title="Normalized events"
