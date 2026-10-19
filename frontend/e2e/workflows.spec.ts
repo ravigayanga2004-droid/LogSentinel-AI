@@ -65,7 +65,7 @@ test('administrator creates workspace, source, imports logs and completes an inv
   await page.goto('/sources/new');
   await page.getByLabel('Source name', { exact: true }).fill('Browser auth source');
   await page.getByLabel('Source type').selectOption('linux_auth');
-  await page.getByLabel('Parser', { exact: true }).selectOption('json');
+  await page.getByRole('combobox', { name: 'Parser', exact: true }).selectOption('json');
   await page.getByRole('button', { name: 'Connect source', exact: true }).click();
   await page.getByRole('button', { name: 'Import logs', exact: true }).click();
   const events = Array.from({ length: 8 }, (_, index) =>
@@ -100,7 +100,7 @@ test('administrator creates workspace, source, imports logs and completes an inv
   await expect(
     page.getByText('Verified synthetic test activity. No response action required.'),
   ).toBeVisible();
-  await page.getByLabel('Status', { exact: true }).selectOption('RESOLVED');
+  await page.getByRole('combobox', { name: 'Status', exact: true }).selectOption('RESOLVED');
   await page.getByLabel('Resolution reason').fill('Authorized browser verification');
   await page.getByRole('button', { name: 'Update investigation' }).click();
   await expect(page.getByText('RESOLVED', { exact: true }).first()).toBeVisible();

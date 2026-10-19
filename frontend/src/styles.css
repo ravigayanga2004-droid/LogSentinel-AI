@@ -607,9 +607,18 @@ pre {
   gap: 16px;
   margin-bottom: 21px;
 }
-.kpi-grid > .panel + .panel { margin-top: 0; }
-.chart-data { border-top: 1px solid var(--border); color: var(--muted); font-size: 10px; }
-.chart-data > summary { cursor: pointer; padding: 9px 22px; }
+.kpi-grid > .panel + .panel {
+  margin-top: 0;
+}
+.chart-data {
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 10px;
+}
+.chart-data > summary {
+  cursor: pointer;
+  padding: 9px 22px;
+}
 .kpi {
   padding: 20px 21px 16px;
 }
