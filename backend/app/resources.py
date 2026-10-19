@@ -290,6 +290,10 @@ def event_query(wid: str, filters: dict):
     }
     if set(filters) - allowed:
         raise HTTPException(422, "Unknown event filter")
+    if any(
+        not isinstance(value, (str, int, float, bool, type(None))) for value in filters.values()
+    ):
+        raise HTTPException(422, "Event filters must be scalar values")
     for key in allowed - {"q", "start", "end", "anomaly", "hours"}:
         if filters.get(key) not in {None, ""}:
             query = query.where(getattr(Event, key) == filters[key])
