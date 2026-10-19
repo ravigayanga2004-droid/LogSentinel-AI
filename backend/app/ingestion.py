@@ -194,6 +194,8 @@ def ingest_job(db: Session, job: Job):
                         }
                         source.last_error_at = utcnow()
                     timestamp = parse_timestamp(record.pop("timestamp"))
+                    if not record.get("source_host"):
+                        record["source_host"] = source.host
                     bucket = int(timestamp.timestamp()) // window
                     key = (envelope["fingerprint"], bucket)
                     if key in known:
