@@ -1,0 +1,54 @@
+name: Verify LogSentinel
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: sentinel
+          POSTGRES_PASSWORD: ci-only-ephemeral-password
+          POSTGRES_DB: sentinel_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U sentinel -d sentinel_test"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: pip }
+      - run: pip install -r requirements.lock && pip install --no-deps -e .
+      - run: ruff check backend scripts && ruff format --check backend scripts
+      - run: mypy backend/app
+      - run: pytest -q --cov=app --cov-report=term-missing
+      - run: python scripts/verify_migrations.py
+      - run: pytest -q
+        env:
+          TEST_DATABASE_URL: postgresql+psycopg://sentinel:ci-only-ephemeral-password@localhost:5432/sentinel_test
+  console:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "24", cache: npm, cache-dependency-path: frontend/package-lock.json }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: python -m venv .venv && .venv/bin/pip install -r requirements.lock && .venv/bin/pip install --no-deps -e .
+      - run: npm ci --prefix frontend
+      - run: npm run lint && npm run typecheck && npm test && npm run build
+      - run: npm --prefix frontend run format:check
+      - run: npx --prefix frontend playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-verification
+          path: |
+            frontend/playwright-report
+            artifacts
+          retention-days: 7
